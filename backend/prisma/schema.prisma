@@ -9,7 +9,7 @@ generator client {
 
 model Transaction {
   id        Int      @id @default(autoincrement())
-  hash      String   @unique
+  hash      String   // Removed @unique constraint
   timestamp DateTime
   amount    Float
   createdAt DateTime @default(now())
