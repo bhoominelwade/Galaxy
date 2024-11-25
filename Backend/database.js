@@ -53,18 +53,44 @@ class TokenMetricsService {
       });
 
       if (data.success && Array.isArray(data.data)) {
-        const transactions = data.data.map(tx => ({
-          hash: tx.trans_id,
-          timestamp: new Date(tx.block_time * 1000),
-          amount: tx.amount / Math.pow(10, tx.token_decimals),
-          createdAt: new Date()
-        }));
+        // Create a Map to store unique transactions by hash
+        const uniqueTransactions = new Map();
+
+        data.data.forEach(tx => {
+          const transaction = {
+            hash: tx.trans_id,
+            timestamp: new Date(tx.block_time * 1000),
+            amount: tx.amount / Math.pow(10, tx.token_decimals),
+            createdAt: new Date()
+          };
+
+          // Only keep the transaction with the highest amount if duplicate hash exists
+          if (!uniqueTransactions.has(tx.trans_id) || 
+              uniqueTransactions.get(tx.trans_id).amount < transaction.amount) {
+            uniqueTransactions.set(tx.trans_id, transaction);
+          }
+        });
+
+        // Convert Map values to array
+        const transactions = Array.from(uniqueTransactions.values());
 
         if (transactions.length > 0) {
+          // First, delete any existing duplicates
+          await prisma.transaction.deleteMany({
+            where: {
+              hash: {
+                in: transactions.map(tx => tx.hash)
+              }
+            }
+          });
+
+          // Then create new records
           await prisma.transaction.createMany({
             data: transactions,
             skipDuplicates: true
           });
+
+          console.log(`Stored ${transactions.length} unique transactions`);
         }
       }
     } catch (error) {
@@ -73,9 +99,53 @@ class TokenMetricsService {
     }
   }
 
+  async cleanup() {
+    try {
+      // Find duplicate transactions based on hash
+      const duplicates = await prisma.transaction.groupBy({
+        by: ['hash'],
+        having: {
+          hash: {
+            _count: {
+              gt: 1
+            }
+          }
+        }
+      });
+
+      // For each duplicate set, keep only the one with the highest amount
+      for (const dup of duplicates) {
+        const transactions = await prisma.transaction.findMany({
+          where: {
+            hash: dup.hash
+          },
+          orderBy: {
+            amount: 'desc'
+          }
+        });
+
+        if (transactions.length > 1) {
+          // Keep the first one (highest amount) and delete the rest
+          const [keep, ...remove] = transactions;
+          await prisma.transaction.deleteMany({
+            where: {
+              id: {
+                in: remove.map(tx => tx.id)
+              }
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      throw error;
+    }
+  }
+
   async getMetrics() {
     try {
       await this.fetchAndStoreTransactions();
+      await this.cleanup(); // Add cleanup step before getting metrics
 
       const [metadata, stats, priceResponse] = await Promise.all([
         this.api.get('/token/meta', { params: { address: TOKEN_ADDRESS } }),

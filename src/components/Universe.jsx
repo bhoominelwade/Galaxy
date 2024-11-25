@@ -77,17 +77,14 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
   
   useFrame(() => {
     if (positionMarker.current && mainCamera) {
-      // Match the same scale factor used for galaxy positions (0.1)
       const scaleFactor = 0.1;
       
-      // Update marker position based on main camera position
       positionMarker.current.position.set(
         mainCamera.position.x * scaleFactor,
-        0,  // Keep at plane level
+        0,
         mainCamera.position.z * scaleFactor
       );
 
-      // Ensure the marker is always visible
       positionMarker.current.position.y = 0.5;
     }
   });
@@ -96,8 +93,7 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
     const intersects = raycaster.intersectObjects(scene.children, true);
     if (intersects.length > 0) {
       const point = intersects[0].point;
-      // Use the same scale factor for click navigation (inverse of display scale)
-      const scaleFactor = 10; // 1/0.1
+      const scaleFactor = 10;
       const worldPosition = [
         point.x * scaleFactor,
         mainCamera?.position.y || 50,
@@ -121,20 +117,17 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
         speed={0.5}
       />
 
-      {/* Position marker (red dot) */}
       <mesh ref={positionMarker}>
         <sphereGeometry args={[1.5, 16, 16]} />
         <meshBasicMaterial 
           color="#ff4444" 
           transparent 
           opacity={0.8}
-          // Ensure the marker is always visible on top
           depthTest={false}
         />
         <pointLight distance={10} intensity={1} color="#ff4444" />
       </mesh>
 
-      {/* Galaxy dots */}
       {galaxyPositions.map((pos, index) => (
         <MinimapDot
           key={index}
@@ -144,7 +137,6 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
         />
       ))}
 
-      {/* Click detection plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} onClick={handleClick}>
         <planeGeometry args={[1000, 1000]} />
         <meshBasicMaterial visible={false} />
@@ -190,6 +182,9 @@ const Universe = () => {
   const [solitaryPlanets, setSolitaryPlanets] = useState([]);
   const [selectedGalaxy, setSelectedGalaxy] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResult, setSearchResult] = useState(null);
+  const [searchError, setSearchError] = useState('');
   const mainCameraRef = useRef();
   const controlsRef = useRef();
 
@@ -242,45 +237,61 @@ const Universe = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  
-  
+  useEffect(() => {
+    let totalPlanets = 0;
+    galaxies.forEach((galaxy, index) => {
+      console.log(`Galaxy ${index} has ${galaxy.transactions.length} planets`);
+      totalPlanets += galaxy.transactions.length;
+    });
+    console.log(`Total planets in galaxies: ${totalPlanets}`);
+    console.log(`Solitary planets: ${solitaryPlanets.length}`);
+  }, [galaxies, solitaryPlanets]);
 
   const groupTransactionsIntoGalaxies = (transactions) => {
     const sortedTransactions = [...transactions].sort((a, b) => b.amount - a.amount);
     const galaxies = [];
     let currentGalaxy = [];
     let currentSum = 0;
-    const MAX_GALAXY_AMOUNT = 700;
+    const TARGET_GALAXY_AMOUNT = 300;
+    const MAX_GALAXY_AMOUNT = 400; // Buffer of 100
     let remainingPlanets = [];
   
-    for (const tx of sortedTransactions) {
+    // First separate out the large solo planets (> 400)
+    const soloTransactions = sortedTransactions.filter(tx => tx.amount > MAX_GALAXY_AMOUNT);
+    const galaxyTransactions = sortedTransactions.filter(tx => tx.amount <= MAX_GALAXY_AMOUNT);
+  
+    // Process remaining transactions sequentially into galaxies
+    for (const tx of galaxyTransactions) {
       if (currentSum + tx.amount <= MAX_GALAXY_AMOUNT) {
+        // Add to current galaxy if within limit
         currentGalaxy.push(tx);
         currentSum += tx.amount;
       } else {
+        // Current galaxy is full, start a new one
         if (currentGalaxy.length > 0) {
           galaxies.push({
             transactions: currentGalaxy,
             totalAmount: currentSum
           });
         }
+        // Start new galaxy with current transaction
         currentGalaxy = [tx];
         currentSum = tx.amount;
       }
     }
   
+    // Don't forget to add the last galaxy if it has transactions
     if (currentGalaxy.length > 0) {
-      if (currentSum >= 200) {
-        galaxies.push({
-          transactions: currentGalaxy,
-          totalAmount: currentSum
-        });
-      } else {
-        remainingPlanets.push(...currentGalaxy);
-      }
+      galaxies.push({
+        transactions: currentGalaxy,
+        totalAmount: currentSum
+      });
     }
   
-    return { galaxies, solitaryPlanets: remainingPlanets };
+    return { 
+      galaxies, 
+      solitaryPlanets: soloTransactions 
+    };
   };
 
   const calculateGalaxyPosition = (index, total) => {
@@ -349,6 +360,116 @@ const Universe = () => {
     }
   }, []);
 
+  const handleSearch = (e) => {
+    e.preventDefault();
+    setSearchError('');
+    
+    // Search in galaxies
+    for (const galaxy of galaxies) {
+      const foundTransaction = galaxy.transactions.find(tx => 
+        tx.hash.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      
+      if (foundTransaction) {
+        setSelectedGalaxy(galaxy);
+        setSearchResult(foundTransaction.hash);
+        // Center camera on found transaction
+        if (mainCameraRef.current && controlsRef.current) {
+          const duration = 1000;
+          const startPosition = {
+            x: mainCameraRef.current.position.x,
+            y: mainCameraRef.current.position.y,
+            z: mainCameraRef.current.position.z
+          };
+          const endPosition = {
+            x: 0,
+            y: 25,
+            z: 30
+          };
+          
+          const animate = () => {
+            const now = Date.now();
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            
+            mainCameraRef.current.position.set(
+              startPosition.x + (endPosition.x - startPosition.x) * eased,
+              startPosition.y + (endPosition.y - startPosition.y) * eased,
+              startPosition.z + (endPosition.z - startPosition.z) * eased
+            );
+            
+            controlsRef.current.target.set(0, 0, 0);
+            controlsRef.current.update();
+            
+            if (progress < 1) {
+              requestAnimationFrame(animate);
+            }
+          };
+          
+          const startTime = Date.now();
+          animate();
+        }
+        return;
+      }
+    }
+  
+    // Search in solitary planets
+    const foundPlanet = solitaryPlanets.find(tx => 
+      tx.hash.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  
+    if (foundPlanet) {
+      setSearchResult(foundPlanet.hash);
+      setSelectedGalaxy(null);
+      // Center and highlight solitary planet
+      if (mainCameraRef.current && controlsRef.current) {
+        const planetPosition = calculateGalaxyPosition(
+          solitaryPlanets.indexOf(foundPlanet) + galaxies.length,
+          solitaryPlanets.length + galaxies.length
+        );
+        
+        const duration = 1000;
+        const startPosition = {
+          x: mainCameraRef.current.position.x,
+          y: mainCameraRef.current.position.y,
+          z: mainCameraRef.current.position.z
+        };
+        const endPosition = {
+          x: planetPosition[0],
+          y: planetPosition[1] + 10,
+          z: planetPosition[2] + 20
+        };
+        
+        const animate = () => {
+          const now = Date.now();
+          const elapsed = now - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          
+          mainCameraRef.current.position.set(
+            startPosition.x + (endPosition.x - startPosition.x) * eased,
+            startPosition.y + (endPosition.y - startPosition.y) * eased,
+            startPosition.z + (endPosition.z - startPosition.z) * eased
+          );
+          
+          controlsRef.current.target.set(planetPosition[0], planetPosition[1], planetPosition[2]);
+          controlsRef.current.update();
+          
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+          }
+        };
+        
+        const startTime = Date.now();
+        animate();
+      }
+    } else {
+      setSearchError('Transaction not found');
+      setSearchResult(null);
+    }
+  };
+
   useEffect(() => {
     const fetchAndProcessTransactions = async () => {
       try {
@@ -372,134 +493,216 @@ const Universe = () => {
     calculateGalaxyPosition(index, galaxies.length)
   );
 
-  // In your Universe component, update the Canvas and OrbitControls settings:
-
-return (
-  <div style={{ width: '100vw', height: '100vh', background: '#000000' }}>
-    <Canvas 
-      camera={{ 
-        position: [0, 50, 100], 
-        fov: 65,
-        far: 2000,
-        near: 0.1
-      }} 
-      onCreated={({ camera }) => {
-        mainCameraRef.current = camera;
-      }}
-    >
-      <ambientLight intensity={0.4} /> {/* Increased ambient light */}
-      <pointLight position={[10, 10, 10]} intensity={1.2} /> {/* Increased point light */}
-      
-      <Stars 
-        radius={200}
-        depth={60}
-        count={5000}
-        factor={10}
-        saturation={1}
-        fade={true}
-        speed={0.3}
-      />
-      
-      <Stars 
-        radius={150}
-        depth={50}
-        count={2000}
-        factor={15}
-        saturation={1}
-        fade={true}
-        speed={0.2}
-      />
-
-      {selectedGalaxy ? (
-        <SpiralGalaxy 
-          transactions={selectedGalaxy.transactions}
-          position={[0, 0, 0]}
-          isSelected={true}
-          colorIndex={galaxies.findIndex(g => g === selectedGalaxy)}
+  const SearchBox = () => (
+    <div style={{
+      position: 'absolute',
+      top: '20px',
+      right: '20px',
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-end',
+      gap: '10px'
+    }}>
+      <form onSubmit={handleSearch} style={{
+        display: 'flex',
+        gap: '10px'
+      }}>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search transaction..."
+          style={{
+            padding: '8px 12px',
+            background: 'rgba(255, 255, 255, 0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+            color: 'white',
+            outline: 'none',
+            width: '250px',
+            backdropFilter: 'blur(10px)',
+          }}
         />
-      ) : (
-        <>
-          {galaxies.map((galaxy, index) => (
-            <SpiralGalaxy
-              key={index}
-              transactions={galaxy.transactions}
-              position={calculateGalaxyPosition(index, galaxies.length)}
-              onClick={() => setSelectedGalaxy(galaxy)}
-              isSelected={false}
-              colorIndex={index}
-            />
-          ))}
-
-          {solitaryPlanets.map((tx, index) => (
-            <Planet
-              key={tx.hash}
-              transaction={tx}
-              position={calculateGalaxyPosition(
-                index + galaxies.length,
-                solitaryPlanets.length + galaxies.length
-              )}
-              size={0.5 + (tx.amount / 1000)}
-              colorIndex={index}
-            />
-          ))}
-        </>
-      )}
-
-      <OrbitControls 
-        ref={controlsRef}
-        enableZoom={true}
-        maxDistance={selectedGalaxy ? 40 : 300}
-        minDistance={selectedGalaxy ? 15 : 30}
-        autoRotate={!selectedGalaxy}
-        autoRotateSpeed={0.3}
-        maxPolarAngle={Math.PI * 0.75}
-        minPolarAngle={Math.PI * 0.25}
-        zoomSpeed={1}
-        rotateSpeed={0.5}
-        enableDamping={true}
-        dampingFactor={0.05}
-      />
-    </Canvas>
-
-    <Minimap 
-      mainCamera={mainCameraRef.current}
-      galaxyPositions={galaxyPositions}
-      onNavigate={handleMinimapNavigate}
-      selectedGalaxy={selectedGalaxy ? galaxies.indexOf(selectedGalaxy) : null}
-    />
-
-    {selectedGalaxy && (
-      <button
-        style={{
-          position: 'absolute',
-          top: '20px',
-          left: '220px',
-          padding: '10px 20px',
-          background: 'rgba(255,255,255,0.1)',
-          color: 'white',
-          border: '1px solid rgba(255,255,255,0.2)',
-          borderRadius: '5px',
-          cursor: 'pointer',
+        <button
+          type="submit"
+          style={{
+            padding: '8px 16px',
+            background: 'rgba(255, 255, 255, 0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+            color: 'white',
+            cursor: 'pointer',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.3s ease',
+          }}
+          onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
+          onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.1)'}
+        >
+          Search
+        </button>
+      </form>
+      
+      {searchError && (
+        <div style={{
+          color: '#ff6b6b',
+          fontSize: '0.9em',
+          background: 'rgba(0, 0, 0, 0.7)',
+          padding: '8px 12px',
+          borderRadius: '4px',
           backdropFilter: 'blur(10px)',
-          transition: 'all 0.3s ease',
-          ':hover': {
-            background: 'rgba(255,255,255,0.2)'
-          }
-        }}
-        onClick={() => {
-          setSelectedGalaxy(null);
-          if (mainCameraRef.current && controlsRef.current) {
-            mainCameraRef.current.position.set(0, 50, 100);
-            controlsRef.current.target.set(0, 0, 0);
-            controlsRef.current.update();
-          }
+        }}>
+          {searchError}
+        </div>
+      )}
+      
+      {searchResult && (
+        <div style={{
+          color: '#4ecdc4',
+          fontSize: '0.9em',
+          background: 'rgba(0, 0, 0, 0.7)',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          backdropFilter: 'blur(10px)',
+          maxWidth: '300px',
+          wordBreak: 'break-all'
+        }}>
+          Found: {searchResult}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ width: '100vw', height: '100vh', background: '#000000' }}>
+      <SearchBox />
+
+      <Canvas 
+        camera={{ 
+          position: [0, 50, 100], 
+          fov: 65,
+          far: 2000,
+          near: 0.1
+        }} 
+        onCreated={({ camera }) => {
+          mainCameraRef.current = camera;
         }}
       >
-        Back to Universe
-      </button>
-    )}
-  </div>
-); 
-}
+        <ambientLight intensity={0.4} />
+        <pointLight position={[10, 10, 10]} intensity={1.2} />
+        
+        <Stars 
+          radius={200}
+          depth={60}
+          count={5000}
+          factor={10}
+          saturation={1}
+          fade={true}
+          speed={0.3}
+        />
+        
+        <Stars 
+          radius={150}
+          depth={50}
+          count={2000}
+          factor={15}
+          saturation={1}
+          fade={true}
+          speed={0.2}
+        />
+
+{selectedGalaxy ? (
+  <SpiralGalaxy 
+    transactions={selectedGalaxy.transactions}
+    position={[0, 0, 0]}
+    isSelected={true}
+    colorIndex={galaxies.findIndex(g => g === selectedGalaxy)}
+    highlightedHash={searchResult} // Add this prop
+  />
+) : (
+  <>
+    {galaxies.map((galaxy, index) => (
+      <SpiralGalaxy
+        key={index}
+        transactions={galaxy.transactions}
+        position={calculateGalaxyPosition(index, galaxies.length)}
+        onClick={() => setSelectedGalaxy(galaxy)}
+        isSelected={false}
+        colorIndex={index}
+      />
+    ))}
+
+    {solitaryPlanets.map((tx, index) => (
+      <Planet
+        key={tx.hash}
+        transaction={tx}
+        position={calculateGalaxyPosition(
+          index + galaxies.length,
+          solitaryPlanets.length + galaxies.length
+        )}
+        baseSize={1.5} // Increased base size
+        colorIndex={index}
+        isHighlighted={tx.hash === searchResult} // Add this prop
+      />
+    ))}
+  </>
+)}
+
+        <OrbitControls 
+          ref={controlsRef}
+          enableZoom={true}
+          maxDistance={selectedGalaxy ? 40 : 300}
+          minDistance={selectedGalaxy ? 15 : 30}
+          autoRotate={!selectedGalaxy}
+          autoRotateSpeed={0.3}
+          maxPolarAngle={Math.PI * 0.75}
+          minPolarAngle={Math.PI * 0.25}
+          zoomSpeed={1}
+          rotateSpeed={0.5}
+          enableDamping={true}
+          dampingFactor={0.05}
+        />
+      </Canvas>
+
+      <Minimap 
+        mainCamera={mainCameraRef.current}
+        galaxyPositions={galaxyPositions}
+        onNavigate={handleMinimapNavigate}
+        selectedGalaxy={selectedGalaxy ? galaxies.indexOf(selectedGalaxy) : null}
+      />
+
+      {selectedGalaxy && (
+        <button
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: '220px',
+            padding: '10px 20px',
+            background: 'rgba(255,255,255,0.1)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.3s ease',
+          }}
+          onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+          onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+          onClick={() => {
+            setSelectedGalaxy(null);
+            setSearchResult(null);
+            if (mainCameraRef.current && controlsRef.current) {
+              mainCameraRef.current.position.set(0, 50, 100);
+              controlsRef.current.target.set(0, 0, 0);
+              controlsRef.current.update();
+            }
+          }}
+        >
+          Back to Universe
+        </button>
+      )}
+    </div>
+  );
+};
 
 export default Universe;
