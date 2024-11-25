@@ -1,207 +1,165 @@
-import { useRef, useState, useMemo } from 'react';
-import { Html, useTexture } from '@react-three/drei';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 
-// Define orbit radiuses for different transaction ranges
-const ORBIT_RANGES = [
-  { min: 0, max: 100, radius: 6 },      // Closer inner orbit
-  { min: 100, max: 200, radius: 9 },
-  { min: 200, max: 300, radius: 12 },
-  { min: 300, max: 400, radius: 15 },
-  { min: 400, max: 500, radius: 18 },
-  { min: 500, max: Infinity, radius: 21 }  // Smaller maximum radius
+const PLANET_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD',
+  '#D4A5A5', '#9B90C2', '#A3C6C4', '#E6B89C', '#FE9968'
 ];
 
-const getOrbitForAmount = (amount) => {
-  return ORBIT_RANGES.find(range => amount >= range.min && amount < range.max) || ORBIT_RANGES[0];
-};
+const TEXTURE_PATHS = [
+  '/textures/mars',
+  '/textures/jupiter',
+  '/textures/neptune',
+  '/textures/mercury',
+  '/textures/venus',
+  '/textures/uranus',
+  '/textures/tex2',
+  '/textures/tex4'
+];
 
-const Planet = ({ transaction, position, baseSize = 1, orbitIndex = 0 }) => {
+const ORBIT_RANGES = [
+  { min: 0, max: 50, radius: 8 },    // Increased starting radius
+  { min: 50, max: 100, radius: 13 },
+  { min: 100, max: 150, radius: 18 },
+  { min: 150, max: 200, radius: 23 },
+  { min: 200, max: 250, radius: 28 },
+  { min: 250, max: 300, radius: 33 }
+];
+
+const FIXED_PLANET_SIZE = 2.5;
+
+const Planet = ({ transaction, position, baseSize = 1, orbitIndex, colorIndex = 0, onHover, isHighlighted = false }) => {
   const meshRef = useRef();
-  const ringsRef = useRef();
   const [hovered, setHovered] = useState(false);
-  
-  // Adjust size calculation
-  const size = baseSize * (0.6 + Math.log10(transaction.amount + 1) / 3);
-  
-  // Load and configure textures
-  const textures = useTexture({
-    map: '/textures/tex1.jpg',
-    normalMap: '/textures/tex2.jpg',
-    roughnessMap: '/textures/tex3.jpg',
-    aoMap: '/textures/tex4.jpg',
-  });
+  const [texture, setTexture] = useState(null);
+  const textureLoader = useMemo(() => new THREE.TextureLoader(), []);
 
-  // Enhance texture settings
-  Object.values(textures).forEach(texture => {
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(2, 2);
-    texture.minFilter = THREE.LinearMipMapLinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.needsUpdate = true;
-  });
+  const hashNum = parseInt(transaction.hash.slice(-8), 16);
+  const hashBasedRandom = (seed = 1) => ((hashNum * seed) % 100000) / 100000;
+  const planetColor = PLANET_COLORS[hashNum % PLANET_COLORS.length];
 
-  // Animation remains the same
-  useFrame(({ clock }) => {
-    if (meshRef.current) {
-      const time = clock.getElapsedTime();
-      meshRef.current.rotation.y = time * 0.1;
-      
-      // Get base orbit parameters
-      const orbit = getOrbitForAmount(transaction.amount);
-      
-      // Create unique but stable random values for this planet
-      const seed = transaction.hash ? 
-        transaction.hash.split('').reduce((a, b) => a + b.charCodeAt(0), 0) : 
-        orbitIndex * 1000;
-      
-      // Use the seed to generate consistent random values
-      const randomVal = (seed * 9301 + 49297) % 233280;
-      const rnd = randomVal / 233280;
-  
-      // Adjust orbit radius with some randomness
-      const radiusVariation = Math.sin(seed) * 1.5;  // More variation
-      const baseRadius = orbit.radius + radiusVariation;
-      
-      // Vary the orbit speed based on radius and a random factor
-      const speedVariation = 0.5 + rnd * 0.5;
-      const orbitSpeed = (0.05 * speedVariation) / Math.sqrt(baseRadius);
-  
-      // Create more random starting positions
-      const startAngle = (seed % 360) * Math.PI / 180;
-      const angle = time * orbitSpeed + startAngle;
-      
-      // Add vertical variation
-      const heightVariation = (Math.sin(seed) * 2) * (baseRadius / orbit.radius);
-      
-      // Add some elliptical variation to the orbit
-      const ellipticalFactor = 0.8 + (rnd * 0.4);
-      
-      meshRef.current.position.x = Math.cos(angle) * baseRadius * ellipticalFactor;
-      meshRef.current.position.y = heightVariation;
-      meshRef.current.position.z = Math.sin(angle) * baseRadius;
+  // Simplified texture loading - removing fallback to prevent partial loading states
+  useEffect(() => {
+    const textureIndex = hashNum % TEXTURE_PATHS.length;
+    const basePath = TEXTURE_PATHS[textureIndex];
+
+    textureLoader.load(
+      `${basePath}.jpg`,
+      (loadedTexture) => {
+        loadedTexture.wrapS = loadedTexture.wrapT = THREE.RepeatWrapping;
+        loadedTexture.minFilter = THREE.LinearFilter;
+        loadedTexture.magFilter = THREE.LinearFilter;
+        loadedTexture.encoding = THREE.sRGBEncoding;
+        loadedTexture.needsUpdate = true;
+        setTexture(loadedTexture);
+      },
+      undefined,
+      () => {
+        // If texture fails to load, just use color
+        setTexture(null);
+      }
+    );
+
+    return () => {
+      if (texture) {
+        texture.dispose();
+      }
+    };
+  }, [transaction.hash, textureLoader]);
+
+  // Animation for highlighted planets
+  useEffect(() => {
+    if (isHighlighted && meshRef.current) {
+      const highlightAnimation = () => {
+        const time = Date.now() * 0.001;
+        if (meshRef.current) {
+          meshRef.current.scale.setScalar(1 + Math.sin(time * 4) * 0.1);
+        }
+        requestAnimationFrame(highlightAnimation);
+      };
+      const animationId = requestAnimationFrame(highlightAnimation);
+      return () => cancelAnimationFrame(animationId);
     }
-    
-    if (ringsRef.current) {
-      ringsRef.current.rotation.z = clock.getElapsedTime() * 0.05;
-    }
-  });
+  }, [isHighlighted]);
 
-  // Generate a unique color for each planet based on transaction amount
-  // Generate a unique color for each planet based on multiple factors
-  const planetColor = useMemo(() => {
-  // Create a unique seed from transaction properties
-  const seed = transaction.hash ? 
-    transaction.hash.split('').reduce((a, b) => a + b.charCodeAt(0), 0) : 
-    orbitIndex * 1000;
-  
-  // Use both amount and seed to generate color
-  const hue = ((transaction.amount * seed) % 360) / 360;
-  const saturation = 0.5 + (seed % 1000) / 2000;  // 0.5 to 1.0
-  const lightness = 0.4 + (seed % 1000) / 2500;   // 0.4 to 0.8
-  
-  return new THREE.Color().setHSL(hue, saturation, lightness);
-}, [transaction.hash, transaction.amount, orbitIndex]);
+  const handleClick = (e) => {
+    e.stopPropagation();
+    window.open(`https://solscan.io/tx/${transaction.hash}`, '_blank');
+  };
+
+  const handlePointerOver = (e) => {
+    e.stopPropagation();
+    setHovered(true);
+    if (onHover) onHover(true);
+    document.body.style.cursor = 'pointer';
+  };
+
+  const handlePointerOut = (e) => {
+    e.stopPropagation();
+    setHovered(false);
+    if (onHover) onHover(false);
+    document.body.style.cursor = 'auto';
+  };
+
+  // Simplified material with stronger base visibility
+  const material = useMemo(() => (
+    <meshPhysicalMaterial
+      map={texture}
+      color={planetColor}
+      emissive={isHighlighted ? '#ffffff' : (hovered ? planetColor : planetColor)}
+      emissiveIntensity={isHighlighted ? 1 : (hovered ? 0.5 : 0.2)}
+      metalness={0.4}
+      roughness={0.7}
+      clearcoat={0.3}
+      clearcoatRoughness={0.25}
+      normalScale={new THREE.Vector2(1, 1)}
+      envMapIntensity={1.0}
+    />
+  ), [texture, planetColor, hovered, isHighlighted]);
 
   return (
     <group position={position}>
-      {/* Planet light source */}
-      <pointLight
-        color={planetColor}
-        intensity={0.5}
-        distance={5}
-        decay={2}
-      />
-
-      {/* Main Planet Body */}
+      {/* Main planet */}
       <mesh
         ref={meshRef}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
+        onClick={handleClick}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+        renderOrder={1}
       >
-        <sphereGeometry args={[size, 32, 32]} />
-        <meshStandardMaterial
-          {...textures}
-          color={planetColor}
-          metalness={0.3}
-          roughness={0.6}
-          normalScale={new THREE.Vector2(2, 2)}
-          aoMapIntensity={0.5}
-          emissive={planetColor}
-          emissiveIntensity={0.2}
-        />
+        <sphereGeometry args={[baseSize, 32, 32]} />
+        {material}
       </mesh>
 
-      {/* Enhanced atmosphere glow */}
-      <mesh scale={[1.3, 1.3, 1.3]}>
-        <sphereGeometry args={[size, 32, 32]} />
-        <meshPhongMaterial
+      {/* Glow effect */}
+      <mesh scale={[baseSize * 1.2, baseSize * 1.2, baseSize * 1.2]}>
+        <sphereGeometry args={[1, 16, 16]} />
+        <meshBasicMaterial
           color={planetColor}
           transparent
-          opacity={0.15}
-          depthWrite={false}
+          opacity={isHighlighted || hovered ? 0.2 : 0.1}
           side={THREE.BackSide}
-          emissive={planetColor}
-          emissiveIntensity={0.3}
         />
       </mesh>
 
-      {/* Second atmosphere layer for stronger glow */}
-      <mesh scale={[1.4, 1.4, 1.4]}>
-        <sphereGeometry args={[size, 32, 32]} />
-        <meshPhongMaterial
-          color={planetColor}
-          transparent
-          opacity={0.1}
-          depthWrite={false}
-          side={THREE.BackSide}
-          emissive={planetColor}
-          emissiveIntensity={0.2}
+      {/* Additional light for highlighted/hovered state */}
+      {(isHighlighted || hovered) && (
+        <pointLight
+          distance={15}
+          intensity={isHighlighted ? 2 : 1}
+          color={isHighlighted ? '#ffffff' : planetColor}
         />
-      </mesh>
-
-      {/* Enhanced rings for larger transactions */}
-      {transaction.amount > 500 && (
-        <group ref={ringsRef} rotation={[Math.PI / 4, 0, 0]}>
-          <mesh>
-            <torusGeometry args={[size * 1.8, size * 0.2, 32, 100]} />
-            <meshStandardMaterial
-              color={planetColor}
-              metalness={0.5}
-              roughness={0.4}
-              transparent
-              opacity={0.6}
-              emissive={planetColor}
-              emissiveIntensity={0.1}
-            />
-          </mesh>
-        </group>
       )}
 
       {/* Info tooltip */}
       {hovered && (
         <Html>
-          <div style={{
-            background: 'rgba(0,0,0,0.9)',
-            padding: '12px',
-            borderRadius: '8px',
-            color: 'white',
-            width: '180px',
-            textAlign: 'left',
-            border: `2px solid ${planetColor.getStyle()}`,
-            boxShadow: `0 0 20px ${planetColor.getStyle()}`
-          }}>
-            <div style={{ 
-              fontSize: '1.1em', 
-              fontWeight: 'bold',
-              color: planetColor.getStyle()
-            }}>
-              Amount: {transaction.amount.toFixed(2)}
-            </div>
-            <div style={{ marginTop: '4px', opacity: 0.8 }}>
-              Time: {new Date(transaction.timestamp).toLocaleTimeString()}
-            </div>
+          <div className="transaction-info">
+            <div className="transaction-id">TX: {transaction.hash}</div>
+            <div className="transaction-amount">Amount: {transaction.amount}</div>
+            <div className="click-info">Click to view on Solscan</div>
           </div>
         </Html>
       )}
