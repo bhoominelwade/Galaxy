@@ -10,24 +10,15 @@ if (!process.env.SOLSCAN_API_KEY || !process.env.TOKEN_ADDRESS) {
 }
 
 const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
-
-async function grassToSol(grassAmount) {
-  try {
-    const { data } = await axios.get('https://api.jup.ag/price/v2', {
-      params: {
-        ids: TOKEN_ADDRESS,
-        vsToken: 'So11111111111111111111111111111111111111112'
-      }
-    });
-    return grassAmount * parseFloat(data.data[TOKEN_ADDRESS].price);
-  } catch (error) {
-    console.error('Error fetching price from Jupiter:', error);
-    throw error;
-  }
-}
+const API_RETRY_DELAY = 1000;
+const TRANSACTION_FETCH_DELAY = 500;
 
 class TokenMetricsService {
   static instance;
+  lastProcessedTimestamp = null;
+  totalTransactions = 0;
+  processedHashes = new Set();
+  isInitialized = false;
 
   constructor() {
     this.api = axios.create({
@@ -35,7 +26,8 @@ class TokenMetricsService {
       headers: {
         'Accept': 'application/json',
         'token': process.env.SOLSCAN_API_KEY
-      }
+      },
+      timeout: 10000 // 10 second timeout
     });
   }
 
@@ -46,137 +38,186 @@ class TokenMetricsService {
     return TokenMetricsService.instance;
   }
 
+  async getRealTransactionCount() {
+    try {
+      return await prisma.transaction.count();
+    } catch (error) {
+      console.error('Error getting transaction count:', error);
+      return 0;
+    }
+  }
+
+  async initializeCounter() {
+    try {
+      const lastTx = await prisma.transaction.findFirst({
+        orderBy: { timestamp: 'desc' }
+      });
+
+      if (lastTx) {
+        this.lastProcessedTimestamp = lastTx.timestamp;
+        
+        const processedTransactions = await prisma.transaction.findMany({
+          select: { hash: true }
+        });
+        
+        this.processedHashes = new Set(processedTransactions.map(tx => tx.hash));
+      }
+
+      this.totalTransactions = await this.getRealTransactionCount();
+      console.log(`Total transactions: ${this.totalTransactions}`);
+      this.isInitialized = true;
+    } catch (error) {
+      console.error('Error initializing counter:', error);
+      throw error;
+    }
+  }
+
+  async getTransactions(limit = 100) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeCounter();
+      }
+
+      const [transactions, total] = await Promise.all([
+        prisma.transaction.findMany({
+          take: Math.min(limit, 1000), // Cap at 1000 to prevent overload
+          orderBy: { timestamp: 'desc' },
+          select: {
+            id: true,
+            hash: true,
+            timestamp: true,
+            amount: true,
+            fromAddress: true,
+            toAddress: true
+          }
+        }),
+        this.getRealTransactionCount()
+      ]);
+
+      return {
+        transactions: transactions.map(tx => ({
+          ...tx,
+          timestamp: tx.timestamp.toISOString(), // Format timestamp for JSON
+          amount: parseFloat(tx.amount.toString()) // Convert Decimal to float
+        })),
+        total
+      };
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      throw error;
+    }
+  }
+
   async fetchAndStoreTransactions() {
     try {
+      if (!this.isInitialized) {
+        await this.initializeCounter();
+      }
+
       const { data } = await this.api.get('/token/transfer', {
         params: { address: TOKEN_ADDRESS }
       });
 
-      if (data.success && Array.isArray(data.data)) {
-        // Create a Map to store unique transactions by hash
-        const uniqueTransactions = new Map();
+      if (!data.success || !Array.isArray(data.data)) {
+        throw new Error('Invalid response format from Solscan API');
+      }
 
-        data.data.forEach(tx => {
+      const uniqueTransactions = new Map();
+
+      data.data.forEach(tx => {
+        try {
+          if (this.processedHashes.has(tx.trans_id)) return;
+          
+          const amount = tx.amount / Math.pow(10, tx.token_decimals);
+          if (isNaN(amount) || amount <= 0) {
+            console.warn(`Invalid amount for transaction ${tx.trans_id}`);
+            return;
+          }
+
           const transaction = {
             hash: tx.trans_id,
             timestamp: new Date(tx.block_time * 1000),
-            amount: tx.amount / Math.pow(10, tx.token_decimals),
-            createdAt: new Date()
+            amount,
+            createdAt: new Date(),
+            fromAddress: tx.from_address,
+            toAddress: tx.to_address
           };
+          
+          uniqueTransactions.set(tx.trans_id, transaction);
+          this.processedHashes.add(tx.trans_id);
+        } catch (err) {
+          console.error(`Error processing transaction ${tx.trans_id}:`, err);
+        }
+      });
 
-          // Only keep the transaction with the highest amount if duplicate hash exists
-          if (!uniqueTransactions.has(tx.trans_id) || 
-              uniqueTransactions.get(tx.trans_id).amount < transaction.amount) {
-            uniqueTransactions.set(tx.trans_id, transaction);
-          }
+      const transactions = Array.from(uniqueTransactions.values())
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      if (transactions.length > 0) {
+        const maxId = await prisma.transaction.aggregate({ _max: { id: true } });
+        const startId = (maxId._max.id || 0) + 1;
+
+        await prisma.transaction.createMany({
+          data: transactions.map((tx, index) => ({
+            ...tx,
+            id: startId + index
+          })),
+          skipDuplicates: true
         });
 
-        // Convert Map values to array
-        const transactions = Array.from(uniqueTransactions.values());
-
-        if (transactions.length > 0) {
-          // First, delete any existing duplicates
-          await prisma.transaction.deleteMany({
-            where: {
-              hash: {
-                in: transactions.map(tx => tx.hash)
-              }
-            }
-          });
-
-          // Then create new records
-          await prisma.transaction.createMany({
-            data: transactions,
-            skipDuplicates: true
-          });
-
-          console.log(`Stored ${transactions.length} unique transactions`);
-        }
+        this.lastProcessedTimestamp = transactions[transactions.length - 1].timestamp;
+        this.totalTransactions += transactions.length;
+        console.log(`Total transactions: ${this.totalTransactions}`);
       }
+      
+      setTimeout(() => this.fetchAndStoreTransactions(), TRANSACTION_FETCH_DELAY);
     } catch (error) {
-      console.error('API Error:', error);
-      throw error;
+      console.error('API Error:', error.message);
+      if (error.response) {
+        console.error('Error details:', error.response.data);
+      }
+      setTimeout(() => this.fetchAndStoreTransactions(), API_RETRY_DELAY);
+    }
+  }
+
+  async startMonitoring() {
+    try {
+      await this.initializeCounter();
+      this.fetchAndStoreTransactions();
+    } catch (error) {
+      console.error('Error starting monitoring:', error);
+      process.exit(1);
     }
   }
 
   async cleanup() {
     try {
-      // Find duplicate transactions based on hash
-      const duplicates = await prisma.transaction.groupBy({
-        by: ['hash'],
-        having: {
-          hash: {
-            _count: {
-              gt: 1
-            }
-          }
-        }
-      });
-
-      // For each duplicate set, keep only the one with the highest amount
-      for (const dup of duplicates) {
-        const transactions = await prisma.transaction.findMany({
-          where: {
-            hash: dup.hash
-          },
-          orderBy: {
-            amount: 'desc'
-          }
-        });
-
-        if (transactions.length > 1) {
-          // Keep the first one (highest amount) and delete the rest
-          const [keep, ...remove] = transactions;
-          await prisma.transaction.deleteMany({
-            where: {
-              id: {
-                in: remove.map(tx => tx.id)
-              }
-            }
-          });
-        }
-      }
+      await prisma.$disconnect();
     } catch (error) {
       console.error('Error during cleanup:', error);
-      throw error;
     }
-  }
-
-  async getMetrics() {
-    try {
-      await this.fetchAndStoreTransactions();
-      await this.cleanup(); // Add cleanup step before getting metrics
-
-      const [metadata, stats, priceResponse] = await Promise.all([
-        this.api.get('/token/meta', { params: { address: TOKEN_ADDRESS } }),
-        prisma.transaction.aggregate({
-          _count: { hash: true },
-          _sum: { amount: true }
-        }),
-        this.api.get('/token/price', { params: { address: TOKEN_ADDRESS } })
-      ]);
-
-      return {
-        holders: metadata.data.data.holder,
-        totalTransactions: stats._count.hash,
-        totalVolume: stats._sum.amount || 0,
-        tokenPrice: priceResponse.data.success && priceResponse.data.data.length > 0 
-          ? priceResponse.data.data[0].price 
-          : null
-      };
-    } catch (error) {
-      console.error('Error:', error);
-      throw error;
-    }
-  }
-
-  async getTransactions(limit = 15) {
-    return prisma.transaction.findMany({
-      take: limit,
-      orderBy: { timestamp: 'desc' }
-    });
   }
 }
 
-export const tokenMetricsService = TokenMetricsService.getInstance();
-export { grassToSol };
+const tokenMetricsService = TokenMetricsService.getInstance();
+
+// Handle cleanup
+process.on('SIGINT', async () => {
+  console.log('Cleaning up...');
+  await tokenMetricsService.cleanup();
+  process.exit();
+});
+
+process.on('uncaughtException', async (error) => {
+  console.error('Uncaught exception:', error);
+  await tokenMetricsService.cleanup();
+  process.exit(1);
+});
+
+// Start the service
+tokenMetricsService.startMonitoring().catch(error => {
+  console.error('Failed to start monitoring:', error);
+  process.exit(1);
+});
+
+export { tokenMetricsService };
