@@ -1,9 +1,10 @@
-import { useRef, useMemo, useState, memo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useRef, useMemo, useState, useEffect, useCallback, memo } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import Planet from './Planet';
-import '../styles/galaxy.css';
+import Planet from './Planet.jsx';
+import "../../styles/galaxy.css";
+import { useIsInView } from '../../hooks/useIsInView';
 
 const GALAXY_COLORS = [
   {
@@ -33,29 +34,35 @@ const GALAXY_COLORS = [
   }
 ];
 
-// Updated orbit ranges for better planet distribution
 const ORBIT_RANGES = [
-  { radius: 12, width: 4 },
-  { radius: 20, width: 4 },
-  { radius: 28, width: 4 },
-  { radius: 36, width: 4 },
-  { radius: 44, width: 4 },
-  { radius: 52, width: 4 }
+  { min: 0, max: 50, radius: 8 },
+  { min: 50, max: 100, radius: 13 },
+  { min: 100, max: 150, radius: 18 },
+  { min: 150, max: 200, radius: 23 },
+  { min: 200, max: 250, radius: 28 },
+  { min: 250, max: 300, radius: 33 }
 ];
 
 const PREFIXES = ['NGC', 'IC', 'Messier', 'UGC', 'Andromeda', 'Omega', 'Alpha', 'Nova', 'Nexus', 'Vega'];
 const SUFFIXES = ['Prime', 'Major', 'Minor', 'X', 'Beta', 'Tau', 'Delta', 'Sigma'];
 const DESCRIPTORS = ['Cluster', 'Nebula', 'Vortex', 'Spiral', 'Cloud', 'System', 'Void', 'Matrix'];
+const NUMBERS = () => Math.floor(Math.random() * 9999).toString().padStart(4, '0');
 
 const generateGalaxyName = () => {
-  const prefix = PREFIXES[Math.floor(Math.random() * PREFIXES.length)];
-  const number = Math.floor(Math.random() * 9999).toString().padStart(4, '0');
-  const descriptor = DESCRIPTORS[Math.floor(Math.random() * DESCRIPTORS.length)];
-  const suffix = Math.random() < 0.3 ? SUFFIXES[Math.floor(Math.random() * SUFFIXES.length)] : '';
-  return `${prefix} ${number} ${descriptor} ${suffix}`.trim();
+  const usePrefix = Math.random() < 0.7;
+  const useSuffix = Math.random() < 0.3;
+  const useDescriptor = Math.random() < 0.5;
+  const useNumber = Math.random() < 0.8;
+
+  let name = '';
+  if (usePrefix) name += `${PREFIXES[Math.floor(Math.random() * PREFIXES.length)]} `;
+  if (useNumber) name += `${NUMBERS()} `;
+  if (useDescriptor) name += `${DESCRIPTORS[Math.floor(Math.random() * DESCRIPTORS.length)]} `;
+  if (useSuffix) name += SUFFIXES[Math.floor(Math.random() * SUFFIXES.length)];
+  return name.trim();
 };
 
-const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex = 0, highlightedHash, lodLevel = 'HIGH' }) => {
+const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex = 0, highlightedHash }) => {
   const groupRef = useRef();
   const [hoveredPlanet, setHoveredPlanet] = useState(null);
   const safeColorIndex = Math.abs(colorIndex) % GALAXY_COLORS.length;
@@ -63,7 +70,7 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
   const galaxyName = useMemo(() => generateGalaxyName(), []);
 
   const sortedTransactions = useMemo(() => {
-    return [...transactions].sort((a, b) => b.amount - a.amount);
+    return [...transactions].sort((a, b) => a.amount - b.amount);
   }, [transactions]);
 
   const createSpiralGeometry = useMemo(() => {
@@ -72,7 +79,6 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
     const points = [];
     const particleColors = [];
     const sizes = [];
-    
     const numPoints = isSelected ? 6000 : 2000;
     const numArms = 2 + (safeColorIndex % 3);
     const spiralRadius = isSelected ? 30 : 8;
@@ -85,7 +91,10 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
       for (let i = 0; i < numPoints / numArms; i++) {
         const angle = (i / (numPoints / numArms)) * Math.PI * 4 + armOffset;
         const radius = (i / (numPoints / numArms)) * spiralRadius;
-        const spread = armWidth * (radius / spiralRadius);
+        
+        const nearestOrbit = ORBIT_RANGES.find(orbit => Math.abs(orbit.radius - radius) < 1);
+        const spreadFactor = nearestOrbit ? 0.3 : radius / spiralRadius;
+        const spread = armWidth * spreadFactor;
         
         const x = Math.cos(angle) * radius + (Math.random() - 0.5) * spread;
         const z = Math.sin(angle) * radius + (Math.random() - 0.5) * spread;
@@ -100,7 +109,11 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
         );
         
         particleColors.push(mixedColor.r, mixedColor.g, mixedColor.b);
-        sizes.push(isSelected ? 0.03 : 0.08);
+        
+        const baseSize = isSelected ? 0.03 : 0.06;
+        const sizeVariation = nearestOrbit ? 0.8 : (Math.random() * 0.3 + 0.7);
+        const distanceFactor = 1 - (radius / spiralRadius);
+        sizes.push(baseSize * sizeVariation * (distanceFactor * 0.6 + 0.4));
       }
     }
     
@@ -108,60 +121,47 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
   }, [isSelected, safeColorIndex, colorScheme]);
 
   const planetPositions = useMemo(() => {
-    if (!isSelected) return [];
-
-    const MIN_SEPARATION = 3;
-    const occupiedSpaces = new Set();
+    const MIN_PLANET_SEPARATION = 4;
     const positions = [];
-    const visibleCount = Math.min(transactions.length, 200);
     
-    function isSpaceOccupied(x, z, minSeparation) {
-      const gridX = Math.round(x / minSeparation);
-      const gridZ = Math.round(z / minSeparation);
-      return occupiedSpaces.has(`${gridX},${gridZ}`);
-    }
-
-    function occupySpace(x, z, minSeparation) {
-      const gridX = Math.round(x / minSeparation);
-      const gridZ = Math.round(z / minSeparation);
-      occupiedSpaces.add(`${gridX},${gridZ}`);
-    }
-
-    for (let i = 0; i < visibleCount; i++) {
-      const tx = sortedTransactions[i];
-      let foundValidPosition = false;
-      let attempts = 0;
+    // Add culling logic while preserving orbital structure
+    const visibleCount = isSelected ? 200 : 50;
+    const visibleTransactions = sortedTransactions.slice(0, visibleCount);
+    
+    return visibleTransactions.map((tx, index) => {
+      const totalOrbits = ORBIT_RANGES.length;
+      const planetsPerOrbit = Math.ceil(visibleTransactions.length / totalOrbits);
+      const orbitIndex = Math.floor(index / planetsPerOrbit);
+      const orbit = ORBIT_RANGES[Math.min(orbitIndex, ORBIT_RANGES.length - 1)];
       
-      while (!foundValidPosition && attempts < 50) {
-        // Randomly select an orbit
-        const orbitIndex = Math.floor(Math.random() * ORBIT_RANGES.length);
-        const orbit = ORBIT_RANGES[orbitIndex];
-        
-        // Generate random angle
-        const angle = Math.random() * Math.PI * 2;
-        
-        // Calculate position with some random variation within orbit width
-        const radiusVariation = (Math.random() - 0.5) * orbit.width;
-        const radius = orbit.radius + radiusVariation;
-        
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
-        
-        if (!isSpaceOccupied(x, z, MIN_SEPARATION)) {
-          occupySpace(x, z, MIN_SEPARATION);
-          positions.push({
-            transaction: tx,
-            position: [x, 0, z], // All planets on same y-plane
-            orbitIndex
-          });
-          foundValidPosition = true;
-        }
-        
-        attempts++;
-      }
-    }
-
-    return positions;
+      const planetsInThisOrbit = Math.min(planetsPerOrbit, visibleTransactions.length - orbitIndex * planetsPerOrbit);
+      const positionInOrbit = index % planetsPerOrbit;
+      
+      // Spread planets evenly around orbit with minimum separation
+      const baseAngleOffset = (Math.PI * 2 * positionInOrbit) / planetsInThisOrbit;
+      let angleOffset = baseAngleOffset;
+      
+      // Add some controlled randomness to height but maintain bounds
+      const maxHeight = 2;
+      const heightVariation = (Math.cos(angleOffset * 3) * maxHeight) / 2;
+      
+      // Add slight radius variation but ensure minimum separation
+      const maxRadiusVariation = MIN_PLANET_SEPARATION / 2;
+      const radiusVariation = (Math.sin(angleOffset * 5) * maxRadiusVariation) / 2;
+      
+      // Calculate final position
+      const finalRadius = orbit.radius + radiusVariation;
+      const position = {
+        transaction: tx,
+        radius: finalRadius,
+        angle: angleOffset,
+        height: heightVariation,
+        orbitIndex: orbitIndex
+      };
+      
+      positions.push(position);
+      return position;
+    });
   }, [sortedTransactions, isSelected]);
 
   useFrame(({ clock }) => {
@@ -173,7 +173,6 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
 
   return (
     <group ref={groupRef} position={position} onClick={onClick}>
-      {/* Core */}
       <mesh>
         <sphereGeometry args={[isSelected ? 2 : 0.8, 32, 32]} />
         <meshBasicMaterial 
@@ -184,7 +183,6 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
         <pointLight color={colorScheme.core} intensity={2} distance={50} />
       </mesh>
 
-      {/* Spiral arms */}
       <points>
         <bufferGeometry>
           <bufferAttribute
@@ -219,42 +217,43 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
 
       {isSelected && (
         <>
-          {/* Lighting */}
           <ambientLight intensity={1} />
           <pointLight position={[0, 30, 0]} intensity={2} distance={100} />
           <pointLight position={[0, -30, 0]} intensity={2} distance={100} />
           <pointLight position={[30, 0, 0]} intensity={2} distance={100} />
           <pointLight position={[-30, 0, 0]} intensity={2} distance={100} />
 
-          {/* Orbit rings */}
           {ORBIT_RANGES.map((orbit, i) => (
             <mesh key={`orbit-${i}`} rotation={[Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[orbit.radius - orbit.width/2, orbit.radius + orbit.width/2, 64]} />
+              <ringGeometry args={[orbit.radius, orbit.radius + 0.2, 64]} />
               <meshBasicMaterial 
                 transparent 
-                opacity={0.1} 
+                opacity={0.3} 
                 color="#ffffff" 
                 side={THREE.DoubleSide}
               />
             </mesh>
           ))}
 
-          {/* Planets */}
-          {planetPositions.map(({ transaction, position }, index) => (
+          {planetPositions.map(({ transaction, radius, angle, height, orbitIndex }, index) => (
             <Planet
               key={transaction.hash}
               transaction={transaction}
-              position={position}
+              position={[
+                Math.cos(angle) * radius,
+                height,
+                Math.sin(angle) * radius
+              ]}
+              baseSize={2.5}
+              orbitIndex={orbitIndex}
               colorIndex={index}
               isHighlighted={transaction.hash === highlightedHash}
               onHover={(isHovered) => setHoveredPlanet(isHovered ? transaction : null)}
-              lodLevel={lodLevel}
             />
           ))}
         </>
       )}
 
-      {/* Galaxy info when not selected */}
       {!isSelected && (
         <>
           <Html position={[0, -2, 0]}>

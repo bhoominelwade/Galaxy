@@ -8,11 +8,26 @@ generator client {
 }
 
 model Transaction {
-  id        Int      @id @default(autoincrement())
-  hash      String   @unique  // Added unique constraint
-  timestamp DateTime
-  amount    Float
-  createdAt DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  hash        String   @unique
+  timestamp   DateTime
+  amount      Float
+  createdAt   DateTime @default(now())
+  fromAddress String   
+  toAddress   String   
+
+  @@index([timestamp])
+  @@index([fromAddress])
+  @@index([toAddress])
+}
+
+model TokenMetrics {
+  id              Int      @id @default(autoincrement())
+  holders         Int
+  totalTransactions Int
+  totalVolume     Float
+  tokenPrice      Float?
+  timestamp       DateTime @default(now())
 
   @@index([timestamp])
 }

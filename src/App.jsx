@@ -1,20 +1,34 @@
-import Universe from './components/Universe'
+/* import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import LandingPage from './components/LandingPage';
+import Universe from './components/Universe';
+import './globals.css'
 
 function App() {
   return (
-    <div style={{ 
-      width: '100vw', 
-      height: '100vh', 
-      margin: 0, 
-      padding: 0, 
-      overflow: 'hidden',
-      position: 'fixed',
-      top: 0,
-      left: 0
-    }}>
-      <Universe />
-    </div>
-  )
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/universe" element={<Universe />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App; */
+
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Landing from './components/Landing';
+import Universe from './components/Universe';
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/universe" element={<Universe />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;

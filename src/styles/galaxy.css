@@ -1,66 +1,97 @@
-/* /src/styles/galaxy.css */
-
 .galaxy-info {
-    transform: translateY(-25px);
-    pointer-events: none;
-  }
-  
-  .galaxy-stats {
-    background: rgba(0, 0, 0, 0.6);
-    padding: 6px 12px;
-    border-radius: 4px;
-    color: white;
-    text-align: center;
-    font-size: 0.85em;  /* Increased from 0.7em */
-    font-family: monospace;
-    white-space: nowrap;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(2px);
-  }
-  
-  .galaxy-name-container {
-    transform: translateY(-45px);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-  
-  .galaxy-name {
-    background: rgba(0, 0, 0, 0.8);
-    padding: 4px 8px;
-    border-radius: 3px;
-    color: #00ffff;
-    font-size: 0.8em;  /* Increased from 0.65em */
-    font-family: monospace;
-    text-align: center;
-    letter-spacing: 0.5px;
-    border: 1px solid rgba(0, 255, 255, 0.2);
-    white-space: nowrap;
-    transform: translateY(-5px);
-    transition: all 0.3s;
-  }
-  
-  /* Hover effects */
-  *:hover > .galaxy-name-container {
-    opacity: 1;
-  }
-  
-  *:hover > .galaxy-name-container .galaxy-name {
-    transform: translateY(0);
-  }
-  
-  /* Animation for the galaxy name */
-  @keyframes fadeInUp {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  
-  .galaxy-name-container:hover .galaxy-name {
-    animation: fadeInUp 0.3s ease forwards;
-  }
+  position: absolute;
+  transform: translate(-50%, 50px); /* Move below the galaxy */
+  background: rgba(0, 0, 0, 0.7);
+  padding: 4px 8px; /* Reduced padding */
+  border-radius: 4px;
+  color: white;
+  font-family: 'Monaco', monospace;
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  font-size: 0.8em; /* Reduced font size */
+  z-index: 1;
+}
+
+.galaxy-stats {
+  font-size: 0.9em; /* Slightly smaller stats */
+  opacity: 0.9;
+}
+
+.galaxy-name-container {
+  position: absolute;
+  transform: translate(-50%, 80px); /* Move further below the summation */
+  pointer-events: none;
+  z-index: 1;
+}
+
+.galaxy-name {
+  background: rgba(0, 0, 0, 0.7);
+  padding: 3px 6px; /* Reduced padding */
+  border-radius: 4px;
+  color: white;
+  font-family: 'Monaco', monospace;
+  font-size: 0.7em; /* Even smaller name text */
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  opacity: 0.8; /* Slightly transparent */
+}
+
+.transaction-info {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: white;
+  font-family: 'Monaco', monospace;
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 2;
+}
+
+.transaction-id {
+  font-size: 0.8em;
+  color: #8e9aaf;
+  margin-bottom: 4px;
+}
+
+.transaction-amount {
+  font-size: 0.9em;
+  color: #ffffff;
+}
+
+.planet-info {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: white;
+  font-family: 'Monaco', monospace;
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.planet-info .amount {
+  font-size: 0.9em;
+  color: #ffffff;
+  margin-top: 4px;
+}
+
+.planet-info .click-info {
+  font-size: 0.8em;
+  color: #66bb6a;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Add hover effect for better visibility */
+.galaxy-info:hover,
+.galaxy-name:hover {
+  opacity: 1;
+}
