@@ -35,13 +35,14 @@ const GALAXY_COLORS = [
 
 // Updated orbit ranges for better planet distribution
 const ORBIT_RANGES = [
-  { radius: 12, width: 4 },
-  { radius: 20, width: 4 },
-  { radius: 28, width: 4 },
-  { radius: 36, width: 4 },
-  { radius: 44, width: 4 },
-  { radius: 52, width: 4 }
+  { radius: 12, width: 0.1 },
+  { radius: 20, width: 0.1 },
+  { radius: 28, width: 0.1 },
+  { radius: 36, width: 0.1 },
+  { radius: 44, width: 0.1 },
+  { radius: 52, width: 0.1 }
 ];
+
 
 const PREFIXES = ['NGC', 'IC', 'Messier', 'UGC', 'Andromeda', 'Omega', 'Alpha', 'Nova', 'Nexus', 'Vega'];
 const SUFFIXES = ['Prime', 'Major', 'Minor', 'X', 'Beta', 'Tau', 'Delta', 'Sigma'];
@@ -227,17 +228,69 @@ const SpiralGalaxy = ({ transactions, position, onClick, isSelected, colorIndex 
           <pointLight position={[-30, 0, 0]} intensity={2} distance={100} />
 
           {/* Orbit rings */}
-          {ORBIT_RANGES.map((orbit, i) => (
-            <mesh key={`orbit-${i}`} rotation={[Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[orbit.radius - orbit.width/2, orbit.radius + orbit.width/2, 64]} />
-              <meshBasicMaterial 
-                transparent 
-                opacity={0.1} 
-                color="#ffffff" 
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-          ))}
+         {ORBIT_RANGES.map((orbit, i) => (
+  <group key={`orbit-${i}`}>
+    {/* Core ring */}
+    <mesh rotation={[Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[orbit.radius - orbit.width/2, orbit.radius + orbit.width/2, 128]} />
+      <meshBasicMaterial 
+        transparent 
+        opacity={0.8}
+        color="#FFF8E7"
+        side={THREE.DoubleSide}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+    
+    {/* Inner glow layer */}
+    <mesh rotation={[Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[orbit.radius - orbit.width*2, orbit.radius + orbit.width*2, 128]} />
+      <meshBasicMaterial 
+        transparent 
+        opacity={0.4}
+        color="#FFE5B4"
+        side={THREE.DoubleSide}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+
+    {/* Middle glow layer */}
+    <mesh rotation={[Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[orbit.radius - orbit.width*4, orbit.radius + orbit.width*4, 128]} />
+      <meshBasicMaterial 
+        transparent 
+        opacity={0.2}
+        color="#FFD700"
+        side={THREE.DoubleSide}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+
+    {/* Outer glow layer */}
+    <mesh rotation={[Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[orbit.radius - orbit.width*8, orbit.radius + orbit.width*8, 128]} />
+      <meshBasicMaterial 
+        transparent 
+        opacity={0.1}
+        color="#FFF8DC"
+        side={THREE.DoubleSide}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+
+    {/* Distant glow halo */}
+    <mesh rotation={[Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[orbit.radius - orbit.width*16, orbit.radius + orbit.width*16, 128]} />
+      <meshBasicMaterial 
+        transparent 
+        opacity={0.05}
+        color="#FFFAF0"
+        side={THREE.DoubleSide}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+  </group>
+))}
 
           {/* Planets */}
           {planetPositions.map(({ transaction, position }, index) => (
