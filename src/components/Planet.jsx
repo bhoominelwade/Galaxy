@@ -1,5 +1,5 @@
 // Planet.js
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo,isHighlighted } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -128,42 +128,93 @@ const PlanetMesh = ({ planetType, transaction, onHover, isSelected = false }) =>
           map={texture}
           metalness={0.3}
           roughness={0.7}
+          emissive={isHighlighted ? "#ffffff" : "#000000"}
+          emissiveIntensity={isHighlighted ? 0.5 : 0}
         />
       </mesh>
-
+  
       <mesh ref={glowRef} scale={[1.02, 1.02, 1.02]}>
         <sphereGeometry args={[planetSize, 32, 32]} />
         <meshPhongMaterial
           map={gridTexture}
           transparent={true}
-          opacity={0.1}
-          emissive="#40E0D0"
-          emissiveIntensity={0.1}
+          opacity={isHighlighted ? 0.3 : 0.1}
+          emissive={isHighlighted ? "#ffffff" : "#40E0D0"}
+          emissiveIntensity={isHighlighted ? 0.6 : 0.1}
           side={THREE.FrontSide}
           depthWrite={false}
         />
       </mesh>
-
+  
       <mesh scale={[1.1, 1.1, 1.1]}>
         <sphereGeometry args={[planetSize, 32, 32]} />
         <meshPhongMaterial
-          color="#40E0D4"
+          color={isHighlighted ? "#ffffff" : "#40E0D4"}
           transparent={true}
-          opacity={0.15}
-          emissive="#40E0D4"
-          emissiveIntensity={0.2}
+          opacity={isHighlighted ? 0.4 : 0.15}
+          emissive={isHighlighted ? "#ffffff" : "#40E0D4"}
+          emissiveIntensity={isHighlighted ? 0.7 : 0.2}
           side={THREE.FrontSide}
           depthWrite={false}
         />
       </mesh>
-
-      <pointLight
-        position={[planetSize * 2, 0, 0]}
-        intensity={0.5}
-        distance={planetSize * 6}
-        color="#40E0D0"
-      />
-
+  
+      {isHighlighted && (
+        <>
+          <mesh scale={[1.2, 1.2, 1.2]}>
+            <sphereGeometry args={[planetSize, 32, 32]} />
+            <meshBasicMaterial
+              color="#ffffff"
+              transparent={true}
+              opacity={0.5}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+  
+          <mesh scale={[1.4, 1.4, 1.4]}>
+            <sphereGeometry args={[planetSize, 32, 32]} />
+            <meshBasicMaterial
+              color="#ffffff"
+              transparent={true}
+              opacity={0.3}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+  
+          <mesh scale={[1.6, 1.6, 1.6]}>
+            <sphereGeometry args={[planetSize, 32, 32]} />
+            <meshBasicMaterial
+              color="#ffffff"
+              transparent={true}
+              opacity={0.1}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+  
+          <pointLight 
+            position={[planetSize * 2, 0, 0]} 
+            intensity={3} 
+            distance={planetSize * 15}
+            color="#ffffff"
+          />
+          <pointLight 
+            position={[-planetSize * 2, 0, 0]} 
+            intensity={3} 
+            distance={planetSize * 15}
+            color="#ffffff"
+          />
+          <pointLight 
+            position={[0, planetSize * 2, 0]} 
+            intensity={3} 
+            distance={planetSize * 15}
+            color="#ffffff"
+          />
+        </>
+      )}
+  
       {hovered && transaction && (
         <Html>
           <div style={{

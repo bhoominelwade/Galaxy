@@ -6,19 +6,64 @@ import { tokenMetricsService } from './database.js';
 
 const app = express();
 const PORT = 3000;
-
-// Create HTTP server
 const server = createServer(app);
-
-// Create WebSocket server attached to HTTP server
 const wss = new WebSocketServer({ server });
 const sentTransactions = new Set();
-
-app.use(cors());
-app.use(express.json());
-
-// Track connected clients
 const clients = new Set();
+let lastKnownTransaction = null;
+
+// Helper function to deduplicate transactions
+async function deduplicateTransactions() {
+  try {
+    const { transactions } = await tokenMetricsService.getTransactions(10000); // Changed to larger limit
+    const uniqueTransactions = new Map();
+    
+    transactions.forEach(tx => {  // Removed .data
+      if (!uniqueTransactions.has(tx.hash)) {
+        uniqueTransactions.set(tx.hash, tx);
+      }
+    });
+    
+    return Array.from(uniqueTransactions.values());
+  } catch (error) {
+    console.error('Error deduplicating transactions:', error);
+    return [];
+  }
+}
+
+// Transaction checking function
+const checkNewTransactions = async () => {
+  try {
+    const { transactions } = await tokenMetricsService.getTransactions(10);
+    
+    if (transactions && transactions.length > 0) {
+      const newTransactions = transactions.filter(tx => {
+        if (sentTransactions.has(tx.hash)) {
+          return false;
+        }
+        
+        if (lastKnownTransaction && 
+            new Date(tx.timestamp) <= new Date(lastKnownTransaction.timestamp)) {
+          return false;
+        }
+        
+        return true;
+      });
+
+      if (newTransactions.length > 0) {
+        console.log(`Found ${newTransactions.length} new transactions`);
+        lastKnownTransaction = transactions[0];
+        
+        for (const tx of newTransactions) {
+          sentTransactions.add(tx.hash);
+          await broadcastUpdate(tx);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error checking new transactions:', error);
+  }
+};
 
 // WebSocket connection handling
 wss.on('connection', async (ws) => {
@@ -26,35 +71,31 @@ wss.on('connection', async (ws) => {
   clients.add(ws);
 
   try {
-    // Send all existing transactions at once
-    const { transactions, total } = await tokenMetricsService.getTransactions(10000);
+    const transactions = await deduplicateTransactions();
     
-    if (transactions && Array.isArray(transactions)) {
+    if (transactions.length > 0) {
       transactions.forEach(tx => sentTransactions.add(tx.hash));
       
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({
           type: 'initial',
           data: transactions,
-          total: total,
+          total: transactions.length,
           batchSize: transactions.length
         }));
       }
-    } else {
-      console.error('Invalid transactions data received:', transactions);
     }
   } catch (error) {
     console.error('Error sending initial data:', error);
   }
 
-  // Handle client disconnection
   ws.on('close', () => {
     console.log('Client disconnected from WebSocket');
     clients.delete(ws);
   });
 });
 
-// Function to broadcast updates
+// Broadcast updates
 const broadcastUpdate = async (transaction) => {
   try {
     const total = await tokenMetricsService.getRealTransactionCount();
@@ -80,45 +121,27 @@ const broadcastUpdate = async (transaction) => {
   }
 };
 
-// Transaction monitoring setup
-let lastKnownTransaction = null;
-
-const checkNewTransactions = async () => {
-  try {
-    const { transactions } = await tokenMetricsService.getTransactions(10);
-    
-    if (transactions && transactions.length > 0) {
-      const newTransactions = transactions.filter(tx => 
-        !sentTransactions.has(tx.hash) && 
-        (!lastKnownTransaction || new Date(tx.timestamp) > new Date(lastKnownTransaction.timestamp))
-      );
-
-      if (newTransactions.length > 0) {
-        console.log('New transactions found:', newTransactions.length);
-        lastKnownTransaction = transactions[0];
-        
-        // Mark as sent and broadcast only new transactions
-        for (const tx of newTransactions) {
-          sentTransactions.add(tx.hash);
-          await broadcastUpdate(tx);
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error checking for new transactions:', error);
-  }
-};
-
 // API routes
+app.use(cors());
+app.use(express.json());
+
 app.get('/api/transactions', async (req, res) => {
   try {
-    const { transactions } = await tokenMetricsService.getTransactions(1000); // Increased limit
+    let { offset = 0, limit = 1000 } = req.query;
+    offset = parseInt(offset);
+    limit = parseInt(limit);
     
-    if (!transactions || !Array.isArray(transactions)) {
-      throw new Error('Invalid transactions data received from service');
-    }
+    // Get total count
+    const total = await tokenMetricsService.getRealTransactionCount();
     
-    res.json(transactions);
+    // Get transactions for this batch
+    const { transactions } = await tokenMetricsService.getTransactions(limit, offset);
+    
+    res.json({
+      transactions,
+      total,
+      hasMore: offset + transactions.length < total
+    });
   } catch (error) {
     console.error('Error fetching transactions:', error);
     res.status(500).json({ 
@@ -128,7 +151,6 @@ app.get('/api/transactions', async (req, res) => {
   }
 });
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
@@ -137,7 +159,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Error handling middleware
+// Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ 
@@ -146,18 +168,16 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start the server
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  // Start monitoring for new transactions
-  setInterval(checkNewTransactions, 5000);  // Fixed typo here
-});
-
-// Handle cleanup on server shutdown
+// Cleanup explanation:
+// The cleanup function is crucial for graceful server shutdown.
+// It performs several important tasks:
+// 1. Properly closes all WebSocket connections to prevent hanging connections
+// 2. Ensures the HTTP server is properly shut down
+// 3. Prevents any memory leaks or hanging processes
 const cleanup = async () => {
-  console.log('Cleaning up...');
+  console.log('Starting server cleanup...');
   
-  // Close all WebSocket connections
+  // Close all WebSocket connections gracefully
   for (const client of clients) {
     try {
       client.close();
@@ -166,14 +186,20 @@ const cleanup = async () => {
     }
   }
   
-  // Close the server
+  // Close the HTTP server
   server.close(() => {
-    console.log('Server closed');
+    console.log('Server closed successfully');
     process.exit(0);
   });
 };
 
-// Handle different termination signals
+// Start server
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  setInterval(checkNewTransactions, 5000);
+});
+
+// Handle termination signals
 process.on('SIGTERM', cleanup);
 process.on('SIGINT', cleanup);
 process.on('uncaughtException', (err) => {
