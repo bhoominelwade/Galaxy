@@ -13,6 +13,7 @@ import Minimap from './Minimap';
 import CullingManager from './CullingManager'
 import HyperspaceTunnel from './HyperspaceTunnel'
 import UniverseReveal from './UniverseReveal.jsx'
+import AudioManager from './AudioManager'
 
 const WS_URL = 'ws://localhost:3000';
 
@@ -171,7 +172,7 @@ useEffect(() => {
   
   const camera = mainCameraRef.current;
   const controls = controlsRef.current;
-  const moveSpeed = 25;
+  const moveSpeed = 50;
   
   switch(e.key) {
     case 'ArrowUp':
@@ -894,7 +895,7 @@ useEffect(() => {
   </div>
 )}
       </div>
-
+<AudioManager hyperspaceActive={hyperspaceActive} />
       <Canvas 
   camera={{ 
     position: [0, 50, 100], 
@@ -905,7 +906,7 @@ useEffect(() => {
   }} 
   onCreated={({ camera }) => {
     mainCameraRef.current = camera;
-    gl.setClearColor('#000000');
+   
   }}
 >
   {/* Hyperspace effect */}

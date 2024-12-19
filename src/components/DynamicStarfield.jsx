@@ -88,7 +88,7 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
     ctx.fillStyle = gradient;
     
     // Draw star shape
-    drawStar(ctx, 16, 16, 4, 16,10);
+    drawStar(ctx, 16, 16, 4, 16,8);
     ctx.fill();
     
     const texture = new THREE.CanvasTexture(canvas);
