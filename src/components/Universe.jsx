@@ -11,8 +11,12 @@ import UniverseSpheres from './UniverseSperese.jsx'
 import DynamicStarfield from './DynamicStarfield.jsx';
 import Minimap from './Minimap';
 import CullingManager from './CullingManager'
+import HyperspaceTunnel from './HyperspaceTunnel'
+import UniverseReveal from './UniverseReveal.jsx'
+import AudioManager from './AudioManager'
 
 const WS_URL = 'ws://localhost:3000';
+
 
 
 const Universe = () => {
@@ -29,7 +33,6 @@ const Universe = () => {
   const wsRef = useRef(null);
   const lastGalaxyRef = useRef(null);
   const processedTransactions = useRef(new Set());
-  const galaxyPositionsRef = useRef(new Map());
   const [walletAddress, setWalletAddress] = useState('');
   const [userTransactions, setUserTransactions] = useState([]);
   const [isWalletView, setIsWalletView] = useState(false);
@@ -39,66 +42,188 @@ const Universe = () => {
   const [objectLODs, setObjectLODs] = useState(new Map());
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const allTransactionsRef = useRef(new Set());
+  const [hyperspaceActive, setHyperspaceActive] = useState(false);
+  const [targetGalaxyPosition, setTargetGalaxyPosition] = useState([0, 0, 0]);
+  const [zoomPhase, setZoomPhase] = useState('none');
+const [universeRevealActive, setUniverseRevealActive] = useState(false);
+
+  const galaxyPositionsRef = useRef(new Map());
+  const calculateGalaxyPosition = useCallback((index, total) => {
+    if (galaxyPositionsRef.current.has(index)) {
+      return galaxyPositionsRef.current.get(index);
+    }
+  
+    // Create multiple layers/rings of galaxies
+    const layerSize = Math.ceil(Math.sqrt(total));
+    const layer = Math.floor(index / layerSize);
+    const indexInLayer = index % layerSize;
+    
+    const minRadius = 200;  // Increased base radius
+    const maxRadius = 800;  // Much larger maximum radius
+    const verticalSpread = 300; // Increased vertical spread
+    const spiralFactor = 6;  // More spiral arms
+    
+    // Calculate layer-specific parameters
+    const layerRadiusMultiplier = (layer + 1) / Math.ceil(total / layerSize);
+    const baseRadius = minRadius + (maxRadius - minRadius) * layerRadiusMultiplier;
+    
+    // Add variety to each layer
+    const angleOffset = (layer * Math.PI * 0.5) + (Math.random() * Math.PI * 0.25);
+    const layerHeight = (layer - Math.floor(total / layerSize) / 2) * (verticalSpread / 2);
+    
+    // Calculate position with more randomization
+    const angle = (indexInLayer / layerSize) * Math.PI * 2 * spiralFactor + angleOffset;
+    const radiusJitter = (Math.random() - 0.5) * baseRadius * 0.3;
+    const finalRadius = baseRadius + radiusJitter;
+    
+    const x = Math.cos(angle) * finalRadius;
+    const z = Math.sin(angle) * finalRadius;
+    const y = layerHeight + (Math.random() - 0.5) * verticalSpread;
+  
+    const position = [x, y, z];
+    galaxyPositionsRef.current.set(index, position);
+    return position;
+  }, []);
+
+  const handleGalaxyClick = useCallback((galaxy) => {
+    if (!mainCameraRef.current || !controlsRef.current) {
+      console.warn('Camera or controls not initialized');
+      return;
+    }
+  
+    const galaxyPosition = calculateGalaxyPosition(
+      galaxies.indexOf(galaxy),
+      galaxies.length
+    );
+    
+    const startPosition = mainCameraRef.current.position.clone();
+    const galaxyPos = new THREE.Vector3(...galaxyPosition);
+    
+    setHyperspaceActive(true);
+    setTargetGalaxyPosition(galaxyPosition);
+  
+    // First phase: Hyperspace effect
+    setTimeout(() => {
+      setHyperspaceActive(false);
+      
+      // Second phase: Set selected galaxy and position camera
+      setSelectedGalaxy(galaxy);
+      
+      if (mainCameraRef.current && controlsRef.current) {
+        const duration = 1000;
+        const startTime = Date.now();
+        
+        const animate = () => {
+          const now = Date.now();
+          const elapsed = now - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            
+            mainCameraRef.current.position.lerp(
+              new THREE.Vector3(0, 25, 50),
+              eased
+            );
+            controlsRef.current.target.lerp(
+              new THREE.Vector3(0, 0, 0),
+              eased
+            );
+            controlsRef.current.update();
+          }
+        };
+        
+        animate();
+      }
+    }, 1500); // Match this with your hyperspace effect duration
+  }, [galaxies, calculateGalaxyPosition]);
+
+  const handleBackToUniverse = useCallback(() => {
+    if (!mainCameraRef.current || !controlsRef.current) {
+      console.warn('Camera or controls not initialized');
+      return;
+    }
+  
+    console.log('Back to Universe clicked');
+    
+    if (selectedGalaxy) {
+      const lastPosition = calculateGalaxyPosition(
+        galaxies.indexOf(selectedGalaxy),
+        galaxies.length
+      );
+      setTargetGalaxyPosition(lastPosition);
+    }
+    
+    setHyperspaceActive(true);
+    
+    setTimeout(() => {
+      setHyperspaceActive(false);
+      setUniverseRevealActive(true);
+      
+      setTimeout(() => {
+        setUniverseRevealActive(false);
+        setSelectedGalaxy(null);
+        setSearchResult(null);
+        
+        if (mainCameraRef.current && controlsRef.current) {
+          mainCameraRef.current.position.set(0, 50, 100);
+          controlsRef.current.target.set(0, 0, 0);
+          controlsRef.current.update();
+        }
+      }, 2000);
+    }, 800);
+  }, [selectedGalaxy, galaxies, calculateGalaxyPosition]);
+
+// Add useEffect to monitor state changes
+useEffect(() => {
+  console.log('Hyperspace active:', hyperspaceActive);
+}, [hyperspaceActive]);
+
+useEffect(() => {
+  console.log('Universe reveal active:', universeRevealActive);
+}, [universeRevealActive]);// Add galaxies to dependencies
 
   const handleKeyDown = useCallback((e) => {
-    if (!controlsRef.current || !mainCameraRef.current) return;
-    
-    const camera = mainCameraRef.current;
-    const moveSpeed = 15; // Increased speed
-    const forward = new THREE.Vector3();
-    const right = new THREE.Vector3();
-    
-    camera.getWorldDirection(forward);
-    right.crossVectors(forward, camera.up);
-    
-    // Keep forward/right movement on xz plane
-    forward.y = 0;
-    forward.normalize();
-    right.normalize();
+  if (!controlsRef.current || !mainCameraRef.current) return;
   
-    let moved = false;
+  const camera = mainCameraRef.current;
+  const controls = controlsRef.current;
+  const moveSpeed = 50;
   
-    switch(e.key) {
-      case 'ArrowUp':
-      case 'w':
-        camera.position.addScaledVector(forward, moveSpeed);
-        moved = true;
-        break;
-      case 'ArrowDown':
-      case 's':
-        camera.position.addScaledVector(forward, -moveSpeed);
-        moved = true;
-        break;
-      case 'ArrowLeft':
-      case 'a':
-        camera.position.addScaledVector(right, -moveSpeed);
-        moved = true;
-        break;
-      case 'ArrowRight':
-      case 'd':
-        camera.position.addScaledVector(right, moveSpeed);
-        moved = true;
-        break;
-      case 'q':
-        camera.position.y += moveSpeed;
-        moved = true;
-        break;
-      case 'e':
-        camera.position.y -= moveSpeed;
-        moved = true;
-        break;
-    }
-    
-    if (moved) {
-      // Update controls target to follow camera
-      controlsRef.current.target.set(
-        camera.position.x + forward.x * 10,
-        0,
-        camera.position.z + forward.z * 10
-      );
-      controlsRef.current.update();
-    }
-  }, []);
+  switch(e.key) {
+    case 'ArrowUp':
+    case 'w':
+      camera.position.z -= moveSpeed;
+      controls.target.z -= moveSpeed;
+      break;
+    case 'ArrowDown':
+    case 's':
+      camera.position.z += moveSpeed;
+      controls.target.z += moveSpeed;
+      break;
+    case 'ArrowLeft':
+    case 'a':
+      camera.position.x -= moveSpeed;
+      controls.target.x -= moveSpeed;
+      break;
+    case 'ArrowRight':
+    case 'd':
+      camera.position.x += moveSpeed;
+      controls.target.x += moveSpeed;
+      break;
+    case 'q':
+      camera.position.y += moveSpeed;
+      controls.target.y += moveSpeed;
+      break;
+    case 'e':
+      camera.position.y -= moveSpeed;
+      controls.target.y -= moveSpeed;
+      break;
+  }
+  
+  controls.update();
+}, []);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -128,6 +253,7 @@ const Universe = () => {
     window.addEventListener('wheel', handleWheel, { passive: false });
     return () => window.removeEventListener('wheel', handleWheel);
   }, []);
+
 
   useEffect(() => {
     let totalPlanets = 0;
@@ -187,42 +313,7 @@ const Universe = () => {
     return { galaxies, solitaryPlanets: soloTransactions };
   }, []);
 
-  const calculateGalaxyPosition = useCallback((index, total) => {
-    if (galaxyPositionsRef.current.has(index)) {
-      return galaxyPositionsRef.current.get(index);
-    }
-  
-    // Create multiple layers/rings of galaxies
-    const layerSize = Math.ceil(Math.sqrt(total));
-    const layer = Math.floor(index / layerSize);
-    const indexInLayer = index % layerSize;
-    
-    const minRadius = 200;  // Increased base radius
-    const maxRadius = 800;  // Much larger maximum radius
-    const verticalSpread = 300; // Increased vertical spread
-    const spiralFactor = 6;  // More spiral arms
-    
-    // Calculate layer-specific parameters
-    const layerRadiusMultiplier = (layer + 1) / Math.ceil(total / layerSize);
-    const baseRadius = minRadius + (maxRadius - minRadius) * layerRadiusMultiplier;
-    
-    // Add variety to each layer
-    const angleOffset = (layer * Math.PI * 0.5) + (Math.random() * Math.PI * 0.25);
-    const layerHeight = (layer - Math.floor(total / layerSize) / 2) * (verticalSpread / 2);
-    
-    // Calculate position with more randomization
-    const angle = (indexInLayer / layerSize) * Math.PI * 2 * spiralFactor + angleOffset;
-    const radiusJitter = (Math.random() - 0.5) * baseRadius * 0.3;
-    const finalRadius = baseRadius + radiusJitter;
-    
-    const x = Math.cos(angle) * finalRadius;
-    const z = Math.sin(angle) * finalRadius;
-    const y = layerHeight + (Math.random() - 0.5) * verticalSpread;
-  
-    const position = [x, y, z];
-    galaxyPositionsRef.current.set(index, position);
-    return position;
-  }, []);
+ 
 
   
   
@@ -674,7 +765,29 @@ const Universe = () => {
     const handleSetVisible = useCallback((newVisible) => {
       setVisibleObjects(newVisible);
     }, []);
-  
+
+    useEffect(() => {
+      const camera = mainCameraRef.current;
+      const controls = controlsRef.current;
+      if (camera && controls) {
+        console.log('Camera and controls initialized');
+      }
+    }, [mainCameraRef, controlsRef]);
+    
+    useEffect(() => {
+      if (hyperspaceActive) {
+        console.log('Starting hyperspace effect');
+      } else {
+        console.log('Ending hyperspace effect');
+      }
+    }, [hyperspaceActive]);
+    
+    useEffect(() => {
+      if (selectedGalaxy) {
+        console.log('Selected galaxy:', galaxies.indexOf(selectedGalaxy));
+        console.log('Galaxy transactions:', selectedGalaxy.transactions.length);
+      }
+    }, [selectedGalaxy, galaxies]);
    
 
   return (
@@ -821,113 +934,123 @@ const Universe = () => {
   </div>
 )}
       </div>
-
+<AudioManager hyperspaceActive={hyperspaceActive} />
       <Canvas 
-        camera={{ 
-          position: [0, 50, 100], 
-          fov: 65,
-          far: 2000,
-          near: 0.1
-        }} 
-        onCreated={({ camera }) => {
-          mainCameraRef.current = camera;
-        }}
-      >
-        <ambientLight intensity={0.4} />
-        <pointLight position={[10, 10, 10]} intensity={1.2} />
-         <UniverseSpheres selectedGalaxy={selectedGalaxy} />
-         <DynamicStarfield />
-        <CullingManager
-          galaxies={galaxies}
-          solitaryPlanets={solitaryPlanets}
-          selectedGalaxy={selectedGalaxy}
-          searchResult={searchResult}
-          calculateGalaxyPosition={calculateGalaxyPosition}
-          onSetVisible={handleSetVisible}
+  camera={{ 
+    position: [0, 50, 100], 
+    fov: 65,
+    far: 2000,
+    near: 0.1,
+    up: [0, 1, 0]
+  }} 
+  onCreated={({ camera }) => {
+    mainCameraRef.current = camera;
+   
+  }}
+>
+  {/* Hyperspace effect */}
+   {hyperspaceActive && (
+    <HyperspaceTunnel 
+      active={true}
+      galaxyPosition={targetGalaxyPosition}
+    />
+  )}
+
+  {/* Universe reveal effect */}
+  {universeRevealActive && (
+    <UniverseReveal active={true} />
+  )}
+
+  {/* Only render scene elements when not in transition */}
+  {!hyperspaceActive && !universeRevealActive && (
+    <>
+      <ambientLight intensity={0.4} />
+      <pointLight position={[10, 10, 10]} intensity={1.2} />
+      <UniverseSpheres 
+        selectedGalaxy={selectedGalaxy}
+        hyperspaceActive={hyperspaceActive}
+        zoomPhase={zoomPhase}
+      />
+      <DynamicStarfield hyperspaceActive={hyperspaceActive} />
+            
+            <CullingManager
+              galaxies={galaxies}
+              solitaryPlanets={solitaryPlanets}
+              selectedGalaxy={selectedGalaxy}
+              searchResult={searchResult}
+              calculateGalaxyPosition={calculateGalaxyPosition}
+              onSetVisible={handleSetVisible}
+            />
+
+            {selectedGalaxy ? (
+        <SpiralGalaxy 
+          transactions={selectedGalaxy.transactions}
+          position={[0, 0, 0]}
+          isSelected={true}
+          colorIndex={galaxies.findIndex(g => g === selectedGalaxy)}
+          highlightedHash={searchResult}
+          lodLevel={objectLODs.get(`galaxy-${galaxies.findIndex(g => g === selectedGalaxy)}`) || 'HIGH'}
         />
+            ) : (
+              <>
+                {galaxies.map((galaxy, index) => (
+                  visibleObjects.has(`galaxy-${index}`) && (
+                    <SpiralGalaxy
+                      key={index}
+                      transactions={galaxy.transactions}
+                      position={calculateGalaxyPosition(index, galaxies.length)}
+                      onClick={() => handleGalaxyClick(galaxy)}
+                      isSelected={false}
+                      colorIndex={index}
+                      lodLevel={objectLODs.get(`galaxy-${index}`) || 'HIGH'}
+                    />
+                  )
+                ))}
 
-<ChunkAndLODManager
-    galaxies={galaxies}
-    solitaryPlanets={solitaryPlanets}
-    selectedGalaxy={selectedGalaxy}
-    calculateGalaxyPosition={calculateGalaxyPosition}
-    onUpdateVisible={handleSetVisible}
-    onUpdateLOD={setObjectLODs}
-  />
+                {solitaryPlanets.map((tx, index) => (
+                  visibleObjects.has(`planet-${index}`) && (
+                    <Planet
+                      key={tx.hash}
+                      transaction={tx}
+                      position={calculateGalaxyPosition(
+                        index + galaxies.length,
+                        solitaryPlanets.length + galaxies.length
+                      )}
+                      baseSize={1.5}
+                      colorIndex={index}
+                      isHighlighted={tx.hash === searchResult}
+                      lodLevel={objectLODs.get(`planet-${index}`) || 'HIGH'}
+                    />
+                  )
+                ))}
+              </>
+            )}
 
-{selectedGalaxy ? (
-  <SpiralGalaxy 
-    transactions={selectedGalaxy.transactions}
-    position={[0, 0, 0]}
-    isSelected={true}
-    colorIndex={galaxies.findIndex(g => g === selectedGalaxy)}
-    highlightedHash={searchResult}
-    lodLevel={objectLODs.get(`galaxy-${galaxies.findIndex(g => g === selectedGalaxy)}`) || 'HIGH'}
-  />
-) : (
-  <>
-    {galaxies.map((galaxy, index) => (
-      visibleObjects.has(`galaxy-${index}`) && (
-        <SpiralGalaxy
-          key={index}
-          transactions={galaxy.transactions}
-          position={calculateGalaxyPosition(index, galaxies.length)}
-          onClick={() => {
-            setSelectedGalaxy(galaxy);
-            if (mainCameraRef.current && controlsRef.current) {
-              mainCameraRef.current.position.set(0, 25, 50);
-              controlsRef.current.target.set(0, 0, 0);
-              controlsRef.current.update();
-            }
-          }}
-          isSelected={false}
-          colorIndex={index}
-          lodLevel={objectLODs.get(`galaxy-${index}`) || 'HIGH'}
-        />
-      )
-    ))}
-
-    {solitaryPlanets.map((tx, index) => (
-      visibleObjects.has(`planet-${index}`) && (
-        <Planet
-          key={tx.hash}
-          transaction={tx}
-          position={calculateGalaxyPosition(
-            index + galaxies.length,
-            solitaryPlanets.length + galaxies.length
-          )}
-          baseSize={1.5}
-          colorIndex={index}
-          isHighlighted={tx.hash === searchResult}
-          lodLevel={objectLODs.get(`planet-${index}`) || 'HIGH'}
-        />
-      )
-    ))}
-  </>
-)}
-
-<OrbitControls 
+            <OrbitControls 
   ref={controlsRef}
-  enableZoom={true}
-  maxDistance={selectedGalaxy ? 40 : 300}
-  minDistance={0.0001}
-  autoRotate={!selectedGalaxy}
+  enableZoom={!hyperspaceActive}
+  maxDistance={selectedGalaxy ? 40 : 1000}
+  minDistance={5}
+  autoRotate={!selectedGalaxy && !hyperspaceActive}
   autoRotateSpeed={0.3}
-  maxPolarAngle={Math.PI} // Changed from 0.75 to allow full vertical movement
-  minPolarAngle={0} // Changed from 0.25 to allow full vertical movement
-  zoomSpeed={2}
-  rotateSpeed={0.8}
+  maxPolarAngle={Math.PI}
+  minPolarAngle={0}
+  zoomSpeed={1}
+  rotateSpeed={0.5}
+  panSpeed={5}
   enableDamping={true}
-  dampingFactor={0.05}
+  dampingFactor={0.1}
   mouseButtons={{
     LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.DOLLY,
     RIGHT: THREE.MOUSE.PAN
   }}
-  panSpeed={15}
-  screenSpacePanning={true} // Changed to true for full 3D panning
-  enablePan={true}
-  keyPanSpeed={15}
+  screenSpacePanning={true}
+  enablePan={!hyperspaceActive}
+  keyPanSpeed={25}
 />
+          </>
+        )}
       </Canvas>
       <Minimap 
         mainCamera={mainCameraRef.current}
@@ -961,33 +1084,25 @@ const Universe = () => {
 
       {selectedGalaxy && (
         <button
-          style={{
-            position: 'absolute',
-            top: '20px',
-            left: '220px',
-            padding: '10px 20px',
-            background: 'rgba(255,255,255,0.1)',
-            color: 'white',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: '5px',
-            cursor: 'pointer',
-            backdropFilter: 'blur(10px)',
-            transition: 'all 0.3s ease',
-          }}
-          onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
-          onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-          onClick={() => {
-            setSelectedGalaxy(null);
-            setSearchResult(null);
-            if (mainCameraRef.current && controlsRef.current) {
-              mainCameraRef.current.position.set(0, 50, 100);
-              controlsRef.current.target.set(0, 0, 0);
-              controlsRef.current.update();
-            }
-          }}
-        >
-          Back to Universe
-        </button>
+        style={{
+          position: 'absolute',
+          top: '20px',
+          left: '220px',
+          padding: '10px 20px',
+          background: 'rgba(255,255,255,0.1)',
+          color: 'white',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: '5px',
+          cursor: 'pointer',
+          backdropFilter: 'blur(10px)',
+          transition: 'all 0.3s ease',
+        }}
+        onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+        onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+        onClick={handleBackToUniverse}  // Fixed: Direct reference to the function
+      >
+        Back to Universe
+      </button>
       )}
       {loading && (
   <div style={{
