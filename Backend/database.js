@@ -72,39 +72,67 @@ class TokenMetricsService {
     }
   }
 
-  async getTransactions(limit = 100) {
+  async getTransactions(limit = 1000, offset = 0) {
     try {
-      if (!this.isInitialized) {
-        await this.initializeCounter();
-      }
-
-      const [transactions, total] = await Promise.all([
-        prisma.transaction.findMany({
-          take: Math.min(limit, 1000), // Cap at 1000 to prevent overload
-          orderBy: { timestamp: 'desc' },
-          select: {
-            id: true,
-            hash: true,
-            timestamp: true,
-            amount: true,
-            fromAddress: true,
-            toAddress: true
-          }
-        }),
-        this.getRealTransactionCount()
-      ]);
-
+      const transactions = await prisma.transaction.findMany({
+        skip: offset,
+        take: limit,
+        orderBy: { timestamp: 'desc' }
+      });
+  
+      const total = await this.getRealTransactionCount();
+  
       return {
         transactions: transactions.map(tx => ({
           ...tx,
-          timestamp: tx.timestamp.toISOString(), // Format timestamp for JSON
-          amount: parseFloat(tx.amount.toString()) // Convert Decimal to float
+          timestamp: tx.timestamp.toISOString(),
+          amount: parseFloat(tx.amount.toString())
         })),
         total
       };
     } catch (error) {
       console.error('Error fetching transactions:', error);
       throw error;
+    }
+  }
+
+  async deduplicateTransactions() {
+    try {
+      // Get all transactions
+      const transactions = await prisma.transaction.findMany({
+        select: {
+          id: true,
+          hash: true,
+        },
+        orderBy: {
+          timestamp: 'desc'
+        }
+      });
+  
+      // Find duplicate hashes
+      const hashCount = {};
+      const duplicateIds = [];
+  
+      transactions.forEach(tx => {
+        hashCount[tx.hash] = (hashCount[tx.hash] || 0) + 1;
+        if (hashCount[tx.hash] > 1) {
+          duplicateIds.push(tx.id);
+        }
+      });
+  
+      // Delete duplicates if found
+      if (duplicateIds.length > 0) {
+        await prisma.transaction.deleteMany({
+          where: {
+            id: {
+              in: duplicateIds
+            }
+          }
+        });
+        console.log(`Removed ${duplicateIds.length} duplicate transactions`);
+      }
+    } catch (error) {
+      console.error('Error deduplicating transactions:', error);
     }
   }
 

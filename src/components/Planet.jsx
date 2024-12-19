@@ -8,7 +8,6 @@ const STANDARD_PLANET_SIZE = 0.4;
 const MAX_PLANET_SIZE = 3;
 const MIN_PLANET_SIZE = 0.5;
 const ROTATION_SPEED = 0.01;
-const MEDIA_PREFIX = 'https://brynmtchll.github.io/codepen-assets/solar-system/';
 const SIZE_THRESHOLD = 10000;
 
 const PLANET_TYPES = [
@@ -21,6 +20,36 @@ const PLANET_TYPES = [
   { name: 'uranus', orbitRadius: 140, speed: 0.4 },
   { name: 'neptune', orbitRadius: 180, speed: 0.2 }
 ];
+
+const TEXTURE_PATHS = [
+  '/textures/tex1.jpg',
+  '/textures/tex2.jpg',
+  '/textures/tex3.jpg',
+  '/textures/tex4.jpg',
+  '/textures/tex5.jpg',
+  '/textures/tex6.jpg',
+  '/textures/tex7.jpg',
+  '/textures/tex8.jpg',
+  '/textures/tex9.jpg',
+  '/textures/tex10.jpg',
+  '/textures/tex11.jpg',
+  '/textures/tex12.jpg',
+  '/textures/tex13.jpg',
+  '/textures/tex14.jpg',
+  '/textures/tex15.jpg',
+  '/textures/tex16.jpg',
+  '/textures/mars.jpg',
+  '/textures/moon.jpg',
+  '/textures/venus.jpg',
+  '/textures/earthskin.jpeg',
+  '/textures/saturnskin.jpeg',
+  '/textures/jupiter.jpg',
+  '/textures/neptune.jpg'
+];
+
+// Create a texture loader instance outside components to be reused
+const textureLoader = new THREE.TextureLoader();
+const textureCache = new Map();
 
 const calculatePlanetSize = (amount) => {
   if (!amount) return STANDARD_PLANET_SIZE;
@@ -47,58 +76,63 @@ const formatAmount = (amount) => {
   return amount.toFixed(1);
 };
 
-const createGridTexture = () => {
-  const size = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  
-  ctx.fillStyle = 'transparent';
-  ctx.fillRect(0, 0, size, size);
-  
-  ctx.strokeStyle = 'rgba(64, 224, 208, 0.15)';
-  ctx.lineWidth = 0.1;
-  
-  for (let i = 0; i <= size; i += 16) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i, size);
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(0, i);
-    ctx.lineTo(size, i);
-    ctx.stroke();
-  }
-  
-  return new THREE.CanvasTexture(canvas);
-};
-
 const PlanetMesh = ({ planetType, transaction, onHover, isSelected = false }) => {
   const planetRef = useRef();
-  const glowRef = useRef();
   const [hovered, setHovered] = useState(false);
+  const [texture, setTexture] = useState(null);
 
   const baseSize = calculatePlanetSize(transaction?.amount);
   const scaleFactor = isSelected ? 1 : 0.6;
   const planetSize = baseSize * scaleFactor;
 
-  const texture = useMemo(() => {
-    const textureLoader = new THREE.TextureLoader();
-    return textureLoader.load(`${MEDIA_PREFIX}${planetType.name}.jpeg`);
-  }, [planetType.name]);
-  
-  const gridTexture = useMemo(() => createGridTexture(), []);
-  
+  // Enhanced texture loading with caching and fallback
+  useMemo(() => {
+    const loadTexture = () => {
+      // Generate a consistent random index based on transaction hash
+      const randomIndex = transaction?.hash 
+        ? parseInt(transaction.hash.slice(-8), 16) % TEXTURE_PATHS.length 
+        : Math.floor(Math.random() * TEXTURE_PATHS.length);
+      
+      const texturePath = TEXTURE_PATHS[randomIndex];
+
+      // Check cache first
+      if (textureCache.has(texturePath)) {
+        setTexture(textureCache.get(texturePath));
+        return;
+      }
+
+      // Load texture with fallback
+      textureLoader.load(
+        texturePath,
+        (loadedTexture) => {
+          textureCache.set(texturePath, loadedTexture);
+          setTexture(loadedTexture);
+        },
+        undefined,
+        () => {
+          // If texture fails to load, try another random texture
+          const fallbackPath = TEXTURE_PATHS[Math.floor(Math.random() * TEXTURE_PATHS.length)];
+          textureLoader.load(
+            fallbackPath,
+            (fallbackTexture) => {
+              textureCache.set(fallbackPath, fallbackTexture);
+              setTexture(fallbackTexture);
+            }
+          );
+        }
+      );
+    };
+
+    loadTexture();
+  }, [transaction?.hash, planetType.name]);
+
   useFrame(() => {
     if (planetRef.current) {
       planetRef.current.rotation.y += ROTATION_SPEED;
     }
-    if (glowRef.current) {
-      glowRef.current.rotation.y -= ROTATION_SPEED * 0.5;
-    }
   });
+
+  if (!texture) return null;
 
   return (
     <group>
@@ -128,32 +162,6 @@ const PlanetMesh = ({ planetType, transaction, onHover, isSelected = false }) =>
           map={texture}
           metalness={0.3}
           roughness={0.7}
-        />
-      </mesh>
-
-      <mesh ref={glowRef} scale={[1.02, 1.02, 1.02]}>
-        <sphereGeometry args={[planetSize, 32, 32]} />
-        <meshPhongMaterial
-          map={gridTexture}
-          transparent={true}
-          opacity={0.1}
-          emissive="#40E0D0"
-          emissiveIntensity={0.1}
-          side={THREE.FrontSide}
-          depthWrite={false}
-        />
-      </mesh>
-
-      <mesh scale={[1.1, 1.1, 1.1]}>
-        <sphereGeometry args={[planetSize, 32, 32]} />
-        <meshPhongMaterial
-          color="#40E0D4"
-          transparent={true}
-          opacity={0.15}
-          emissive="#40E0D4"
-          emissiveIntensity={0.2}
-          side={THREE.FrontSide}
-          depthWrite={false}
         />
       </mesh>
 

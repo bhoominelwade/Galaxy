@@ -11,8 +11,11 @@ import UniverseSpheres from './UniverseSperese.jsx'
 import DynamicStarfield from './DynamicStarfield.jsx';
 import Minimap from './Minimap';
 import CullingManager from './CullingManager'
+import HyperspaceTunnel from './HyperspaceTunnel'
+import UniverseReveal from './UniverseReveal.jsx'
 
 const WS_URL = 'ws://localhost:3000';
+
 
 
 const Universe = () => {
@@ -29,7 +32,6 @@ const Universe = () => {
   const wsRef = useRef(null);
   const lastGalaxyRef = useRef(null);
   const processedTransactions = useRef(new Set());
-  const galaxyPositionsRef = useRef(new Map());
   const [walletAddress, setWalletAddress] = useState('');
   const [userTransactions, setUserTransactions] = useState([]);
   const [isWalletView, setIsWalletView] = useState(false);
@@ -39,145 +41,12 @@ const Universe = () => {
   const [objectLODs, setObjectLODs] = useState(new Map());
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const allTransactionsRef = useRef(new Set());
+  const [hyperspaceActive, setHyperspaceActive] = useState(false);
+  const [targetGalaxyPosition, setTargetGalaxyPosition] = useState([0, 0, 0]);
+  const [zoomPhase, setZoomPhase] = useState('none');
+const [universeRevealActive, setUniverseRevealActive] = useState(false);
 
-  const handleKeyDown = useCallback((e) => {
-    if (!controlsRef.current || !mainCameraRef.current) return;
-    
-    const camera = mainCameraRef.current;
-    const moveSpeed = 15; // Increased speed
-    const forward = new THREE.Vector3();
-    const right = new THREE.Vector3();
-    
-    camera.getWorldDirection(forward);
-    right.crossVectors(forward, camera.up);
-    
-    // Keep forward/right movement on xz plane
-    forward.y = 0;
-    forward.normalize();
-    right.normalize();
-  
-    let moved = false;
-  
-    switch(e.key) {
-      case 'ArrowUp':
-      case 'w':
-        camera.position.addScaledVector(forward, moveSpeed);
-        moved = true;
-        break;
-      case 'ArrowDown':
-      case 's':
-        camera.position.addScaledVector(forward, -moveSpeed);
-        moved = true;
-        break;
-      case 'ArrowLeft':
-      case 'a':
-        camera.position.addScaledVector(right, -moveSpeed);
-        moved = true;
-        break;
-      case 'ArrowRight':
-      case 'd':
-        camera.position.addScaledVector(right, moveSpeed);
-        moved = true;
-        break;
-      case 'q':
-        camera.position.y += moveSpeed;
-        moved = true;
-        break;
-      case 'e':
-        camera.position.y -= moveSpeed;
-        moved = true;
-        break;
-    }
-    
-    if (moved) {
-      // Update controls target to follow camera
-      controlsRef.current.target.set(
-        camera.position.x + forward.x * 10,
-        0,
-        camera.position.z + forward.z * 10
-      );
-      controlsRef.current.update();
-    }
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
-
-  useEffect(() => {
-    const handleWheel = (e) => {
-      if (!controlsRef.current || !mainCameraRef.current) return;
-  
-      const camera = mainCameraRef.current;
-      const forward = new THREE.Vector3();
-      camera.getWorldDirection(forward);
-  
-      // Normalize the wheel delta
-      const delta = -Math.sign(e.deltaY);
-      const speed = 15; // Adjust this value to change movement speed
-  
-      // Move camera forward/backward
-      camera.position.addScaledVector(forward, delta * speed);
-  
-      // Update the orbital controls target
-      controlsRef.current.target.addScaledVector(forward, delta * speed);
-      controlsRef.current.update();
-    };
-  
-    window.addEventListener('wheel', handleWheel, { passive: false });
-    return () => window.removeEventListener('wheel', handleWheel);
-  }, []);
-
-  useEffect(() => {
-    let totalPlanets = 0;
-    galaxies.forEach((galaxy, index) => {
-      console.log(`Galaxy ${index} has ${galaxy.transactions.length} planets`);
-      totalPlanets += galaxy.transactions.length;
-    });
-    console.log(`Total planets in galaxies: ${totalPlanets}`);
-    console.log(`Solitary planets: ${solitaryPlanets.length}`);
-  }, [galaxies, solitaryPlanets]);
-
-  const groupTransactionsIntoGalaxies = useCallback((transactions) => {
-    const sortedTransactions = [...transactions].sort((a, b) => b.amount - a.amount);
-    const galaxies = [];
-    let currentGalaxy = [];
-    let currentSum = 0;
-    const TARGET_GALAXY_AMOUNT = 6000;
-    const MAX_GALAXY_AMOUNT = 7000;
-    
-    // First separate out the large solo planets (> MAX_GALAXY_AMOUNT)
-    const soloTransactions = sortedTransactions.filter(tx => tx.amount > MAX_GALAXY_AMOUNT);
-    const galaxyTransactions = sortedTransactions.filter(tx => tx.amount <= MAX_GALAXY_AMOUNT);
-    
-    // Process remaining transactions sequentially into galaxies
-    for (const tx of galaxyTransactions) {
-      if (currentSum + tx.amount <= MAX_GALAXY_AMOUNT) {
-        currentGalaxy.push(tx);
-        currentSum += tx.amount;
-      } else {
-        if (currentGalaxy.length > 0) {
-          galaxies.push({
-            transactions: currentGalaxy,
-            totalAmount: currentSum
-          });
-        }
-        currentGalaxy = [tx];
-        currentSum = tx.amount;
-      }
-    }
-    
-    if (currentGalaxy.length > 0) {
-      galaxies.push({
-        transactions: currentGalaxy,
-        totalAmount: currentSum
-      });
-    }
-    
-    return { galaxies, solitaryPlanets: soloTransactions };
-  }, []);
-
+  const galaxyPositionsRef = useRef(new Map());
   const calculateGalaxyPosition = useCallback((index, total) => {
     if (galaxyPositionsRef.current.has(index)) {
       return galaxyPositionsRef.current.get(index);
@@ -215,37 +84,250 @@ const Universe = () => {
     return position;
   }, []);
 
+const handleGalaxyClick = useCallback((galaxy) => {
+  const galaxyPosition = calculateGalaxyPosition(
+    galaxies.indexOf(galaxy),
+    galaxies.length
+  );
+  
+  if (mainCameraRef.current && controlsRef.current) {
+    const startPosition = mainCameraRef.current.position.clone();
+    const startTarget = controlsRef.current.target.clone();
+    const galaxyPos = new THREE.Vector3(...galaxyPosition);
+    
+    const startTime = Date.now();
+    const duration = 1500; // 1.5 seconds
+
+    setHyperspaceActive(true);
+
+    const animate = () => {
+      const now = Date.now();
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        mainCameraRef.current.position.lerp(new THREE.Vector3(0, 25, 50), eased);
+        controlsRef.current.target.lerp(new THREE.Vector3(0, 0, 0), eased);
+        controlsRef.current.update();
+      } else {
+        setHyperspaceActive(false);
+        setSelectedGalaxy(galaxy);
+        mainCameraRef.current.position.set(0, 25, 50);
+        controlsRef.current.target.set(0, 0, 0);
+        controlsRef.current.update();
+      }
+    };
+
+    animate();
+  }
+}, [galaxies, calculateGalaxyPosition]);
+
+const handleBackToUniverse = useCallback(() => {
+  console.log('Back to Universe clicked');
+  
+  if (selectedGalaxy) {
+    console.log('Setting last galaxy position');
+    lastGalaxyPosition.current = calculateGalaxyPosition(
+      galaxies.indexOf(selectedGalaxy),
+      galaxies.length
+    );
+  }
+  
+  console.log('Starting hyperspace');
+  setHyperspaceActive(true);
+  
+  setTimeout(() => {
+    console.log('Hyperspace ending, starting universe reveal');
+    setHyperspaceActive(false);
+    setUniverseRevealActive(true);
+    
+    setTimeout(() => {
+      console.log('Universe reveal ending, showing normal universe');
+      setUniverseRevealActive(false);
+      setSelectedGalaxy(null);
+      setSearchResult(null);
+      if (mainCameraRef.current && controlsRef.current) {
+        mainCameraRef.current.position.set(0, 50, 100);
+        controlsRef.current.target.set(0, 0, 0);
+        controlsRef.current.update();
+      }
+    }, 2000);
+  }, 800);
+}, [selectedGalaxy, galaxies, calculateGalaxyPosition]);
+
+// Add useEffect to monitor state changes
+useEffect(() => {
+  console.log('Hyperspace active:', hyperspaceActive);
+}, [hyperspaceActive]);
+
+useEffect(() => {
+  console.log('Universe reveal active:', universeRevealActive);
+}, [universeRevealActive]);// Add galaxies to dependencies
+
+  const handleKeyDown = useCallback((e) => {
+  if (!controlsRef.current || !mainCameraRef.current) return;
+  
+  const camera = mainCameraRef.current;
+  const controls = controlsRef.current;
+  const moveSpeed = 25;
+  
+  switch(e.key) {
+    case 'ArrowUp':
+    case 'w':
+      camera.position.z -= moveSpeed;
+      controls.target.z -= moveSpeed;
+      break;
+    case 'ArrowDown':
+    case 's':
+      camera.position.z += moveSpeed;
+      controls.target.z += moveSpeed;
+      break;
+    case 'ArrowLeft':
+    case 'a':
+      camera.position.x -= moveSpeed;
+      controls.target.x -= moveSpeed;
+      break;
+    case 'ArrowRight':
+    case 'd':
+      camera.position.x += moveSpeed;
+      controls.target.x += moveSpeed;
+      break;
+    case 'q':
+      camera.position.y += moveSpeed;
+      controls.target.y += moveSpeed;
+      break;
+    case 'e':
+      camera.position.y -= moveSpeed;
+      controls.target.y -= moveSpeed;
+      break;
+  }
+  
+  controls.update();
+}, []);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  useEffect(() => {
+    const handleWheel = (e) => {
+      if (!controlsRef.current || !mainCameraRef.current) return;
+  
+      const camera = mainCameraRef.current;
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+  
+      // Normalize the wheel delta
+      const delta = -Math.sign(e.deltaY);
+      const speed = 15; // Adjust this value to change movement speed
+  
+      // Move camera forward/backward
+      camera.position.addScaledVector(forward, delta * speed);
+  
+      // Update the orbital controls target
+      controlsRef.current.target.addScaledVector(forward, delta * speed);
+      controlsRef.current.update();
+    };
+  
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, []);
+
+
+  useEffect(() => {
+    let totalPlanets = 0;
+    galaxies.forEach((galaxy, index) => {
+      console.log(`Galaxy ${index} has ${galaxy.transactions.length} planets`);
+      totalPlanets += galaxy.transactions.length;
+    });
+    console.log(`Total planets in galaxies: ${totalPlanets}`);
+    console.log(`Solitary planets: ${solitaryPlanets.length}`);
+  }, [galaxies, solitaryPlanets]);
+
+  const groupTransactionsIntoGalaxies = useCallback((transactions) => {
+
+    if (!transactions || transactions.length === 0) {
+      return { galaxies: [], solitaryPlanets: [] };
+    }
+    // First deduplicate transactions based on hash
+    const uniqueTransactions = Array.from(
+      new Map(transactions.map(tx => [tx.hash, tx])).values()
+    );
+    
+    const sortedTransactions = [...uniqueTransactions].sort((a, b) => b.amount - a.amount);
+    const galaxies = [];
+    let currentGalaxy = [];
+    let currentSum = 0;
+    const TARGET_GALAXY_AMOUNT = 6000;
+    const MAX_GALAXY_AMOUNT = 7000;
+    
+    // First separate out the large solo planets (> MAX_GALAXY_AMOUNT)
+    const soloTransactions = sortedTransactions.filter(tx => tx.amount > MAX_GALAXY_AMOUNT);
+    const galaxyTransactions = sortedTransactions.filter(tx => tx.amount <= MAX_GALAXY_AMOUNT);
+    
+    // Process remaining transactions sequentially into galaxies
+    for (const tx of galaxyTransactions) {
+      if (currentSum + tx.amount <= MAX_GALAXY_AMOUNT) {
+        currentGalaxy.push(tx);
+        currentSum += tx.amount;
+      } else {
+        if (currentGalaxy.length > 0) {
+          galaxies.push({
+            transactions: currentGalaxy,
+            totalAmount: currentSum
+          });
+        }
+        currentGalaxy = [tx];
+        currentSum = tx.amount;
+      }
+    }
+    
+    if (currentGalaxy.length > 0) {
+      galaxies.push({
+        transactions: currentGalaxy,
+        totalAmount: currentSum
+      });
+    }
+    
+    return { galaxies, solitaryPlanets: soloTransactions };
+  }, []);
+
+ 
+
   
   
   // Add smart galaxy management
   const handleNewTransaction = useCallback((newTransaction) => {
     // Add to processedTransactions if not already there
-    if (!processedTransactions.current.has(newTransaction)) {
+    if (!processedTransactions.current.has(newTransaction.hash)) {
       processedTransactions.current.add(newTransaction);
+      
+      // Add to allTransactionsRef if not already there
+      if (!allTransactionsRef.current.has(newTransaction.hash)) {
+        allTransactionsRef.current.add(newTransaction.hash);
+        
+        // Get all existing transactions plus the new one
+        const existingTransactions = galaxies.flatMap(g => g.transactions);
+        const allTransactions = [...existingTransactions, ...solitaryPlanets, newTransaction];
+        
+        // Regroup all transactions
+        const { galaxies: newGalaxies, solitaryPlanets: newSolitaryPlanets } = 
+          groupTransactionsIntoGalaxies(allTransactions);
+        
+        // Update state with all transactions
+        setGalaxies(newGalaxies);
+        setSolitaryPlanets(newSolitaryPlanets);
+        
+        console.log('Updated total transactions:', 
+          newGalaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
+          newSolitaryPlanets.length
+        );
+      }
     }
-    
-    // Add to allTransactionsRef if not already there
-    if (!allTransactionsRef.current.has(newTransaction.hash)) {
-      allTransactionsRef.current.add(newTransaction.hash);
-      
-      // Get all processed transactions
-      const allTransactions = Array.from(processedTransactions.current);
-      
-      // Regroup all transactions
-      const { galaxies: newGalaxies, solitaryPlanets: newSolitaryPlanets } = 
-        groupTransactionsIntoGalaxies(allTransactions);
-      
-      // Update state with all transactions
-      setGalaxies(newGalaxies);
-      setSolitaryPlanets(newSolitaryPlanets);
-      
-      // Log the update
-      console.log('Updated total transactions:', 
-        newGalaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
-        newSolitaryPlanets.length
-      );
-    }
-  }, [groupTransactionsIntoGalaxies]);
+  }, [galaxies, solitaryPlanets, groupTransactionsIntoGalaxies]);
 
   useEffect(() => {
     const ws = new WebSocket(WS_URL);
@@ -259,12 +341,26 @@ const Universe = () => {
       try {
         const message = JSON.parse(event.data);
         
-        if (message.type === 'update' && initialLoadComplete) {
-          const tx = message.data;
-          if (!processedTransactions.current.has(tx.hash)) {
-            processedTransactions.current.add(tx);
-            handleNewTransaction(tx);
+        if (message.type === 'initial') {
+          // Ignore initial message if we already have transactions
+          if (galaxies.length === 0 && solitaryPlanets.length === 0) {
+            const transactions = message.data;
+            transactions.forEach(tx => {
+              if (!processedTransactions.current.has(tx.hash)) {
+                processedTransactions.current.add(tx);
+                allTransactionsRef.current.add(tx.hash);
+              }
+            });
+            
+            const { galaxies: newGalaxies, solitaryPlanets: newPlanets } = 
+              groupTransactionsIntoGalaxies(transactions);
+            
+            setGalaxies(newGalaxies);
+            setSolitaryPlanets(newPlanets);
           }
+        } else if (message.type === 'update' && initialLoadComplete) {
+          const tx = message.data;
+          handleNewTransaction(tx);
         }
       } catch (error) {
         console.error('Error processing WebSocket message:', error);
@@ -277,7 +373,7 @@ const Universe = () => {
         ws.close();
       }
     };
-  }, [handleNewTransaction, initialLoadComplete]);
+  }, [handleNewTransaction, initialLoadComplete, galaxies, solitaryPlanets]);
 
   useEffect(() => {
     const totalTransactions = galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
@@ -463,49 +559,59 @@ const Universe = () => {
   useEffect(() => {
     const fetchAndProcessTransactions = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/transactions');
-        const data = await response.json();
-        
-        if (!Array.isArray(data)) {
-          console.error("Received invalid data format:", data);
-          return;
-        }
-        
-        // Create a temporary array to hold all transaction objects
-        const allTransactions = [];
-        
-        // Process each transaction
-        data.forEach(tx => {
-          if (!processedTransactions.current.has(tx)) {
-            processedTransactions.current.add(tx);
-          }
-          if (!allTransactionsRef.current.has(tx.hash)) {
-            allTransactionsRef.current.add(tx.hash);
-          }
-          allTransactions.push(tx);
-        });
+        setLoading(true);
+        let offset = 0;
+        let allTransactions = [];
+        let hasMore = true;
+        let total = 0;
     
-        // Log the number of transactions being processed
-        console.log('Processing initial transactions:', allTransactions.length);
-        
-        // Group all transactions
-        const { galaxies: galaxyGroups, solitaryPlanets: remainingPlanets } = 
+        // First get the total count
+        const initialResponse = await fetch('http://localhost:3000/api/transactions?offset=0&limit=1');
+        const initialData = await initialResponse.json();
+        total = initialData.total;
+        console.log(`Total transactions to load: ${total}`);
+    
+        // Then fetch all transactions in batches
+        while (offset < total) {
+          const response = await fetch(
+            `http://localhost:3000/api/transactions?offset=${offset}&limit=1000`
+          );
+          const data = await response.json();
+          
+          if (!data.transactions || !Array.isArray(data.transactions)) {
+            throw new Error("Received invalid data format");
+          }
+    
+          allTransactions = [...allTransactions, ...data.transactions];
+          
+          // Log progress
+          console.log(`Loaded ${allTransactions.length}/${total} transactions`);
+          
+          // Update state to show progress
+          const { galaxies: galaxyGroups, solitaryPlanets: remainingPlanets } = 
+            groupTransactionsIntoGalaxies(allTransactions);
+          
+          setGalaxies(galaxyGroups);
+          setSolitaryPlanets(remainingPlanets);
+          
+          // Prepare for next batch
+          offset += data.transactions.length;
+          
+          // Add small delay between batches
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    
+        // Process all transactions once loading is complete
+        const { galaxies: finalGalaxies, solitaryPlanets: finalPlanets } = 
           groupTransactionsIntoGalaxies(allTransactions);
         
-        // Set state with all transactions
-        setGalaxies(galaxyGroups);
-        setSolitaryPlanets(remainingPlanets);
-        
-        // Log the results
-        console.log('Initial galaxies:', galaxyGroups.length);
-        console.log('Initial solitary planets:', remainingPlanets.length);
-        console.log('Total transactions processed:', 
-          galaxyGroups.reduce((sum, g) => sum + g.transactions.length, 0) + 
-          remainingPlanets.length
-        );
-        
+        setGalaxies(finalGalaxies);
+        setSolitaryPlanets(finalPlanets);
         setLoading(false);
         setInitialLoadComplete(true);
+        
+        console.log(`Final load complete. Total transactions: ${allTransactions.length}`);
+        
       } catch (error) {
         console.error('Error:', error);
         setLoading(false);
@@ -558,20 +664,77 @@ const Universe = () => {
     }
   };
   
-    const handleTransactionHighlight = (txHash) => {
-      setSearchResult(txHash);
+  const handleTransactionHighlight = (txHash) => {
+    setSearchResult(txHash);
+    
+    // First check in galaxies
+    const galaxyWithTx = galaxies.find(g => 
+      g.transactions.some(tx => tx.hash === txHash)
+    );
+    
+    if (galaxyWithTx) {
+      setSelectedGalaxy(galaxyWithTx);
+    } else {
+      // Check in solitary planets
+      const solitaryPlanet = solitaryPlanets.find(tx => tx.hash === txHash);
       
-      // Find and focus on transaction
-      const galaxyWithTx = galaxies.find(g => 
-        g.transactions.some(tx => tx.hash === txHash)
-      );
-      
-      if (galaxyWithTx) {
-        setSelectedGalaxy(galaxyWithTx);
-      } else {
+      if (solitaryPlanet) {
         setSelectedGalaxy(null);
+        const planetPosition = calculateGalaxyPosition(
+          solitaryPlanets.indexOf(solitaryPlanet) + galaxies.length,
+          solitaryPlanets.length + galaxies.length
+        );
+        
+        // Animate camera to focus on the solitary planet
+        if (mainCameraRef.current && controlsRef.current) {
+          const duration = 1500; // Increased duration for smoother animation
+          const startPosition = {
+            x: mainCameraRef.current.position.x,
+            y: mainCameraRef.current.position.y,
+            z: mainCameraRef.current.position.z
+          };
+          
+          // Calculate a better viewing position
+          const distance = 30; // Closer view of the planet
+          const angle = Math.atan2(planetPosition[2], planetPosition[0]);
+          const endPosition = {
+            x: planetPosition[0] + Math.cos(angle) * distance,
+            y: planetPosition[1] + 10, // Slight elevation
+            z: planetPosition[2] + Math.sin(angle) * distance
+          };
+          
+          const startTime = Date.now();
+          const animate = () => {
+            const now = Date.now();
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3); // Cubic easing
+            
+            // Update camera position
+            mainCameraRef.current.position.set(
+              startPosition.x + (endPosition.x - startPosition.x) * eased,
+              startPosition.y + (endPosition.y - startPosition.y) * eased,
+              startPosition.z + (endPosition.z - startPosition.z) * eased
+            );
+            
+            // Update controls target to center on planet
+            controlsRef.current.target.set(
+              planetPosition[0],
+              planetPosition[1],
+              planetPosition[2]
+            );
+            controlsRef.current.update();
+            
+            if (progress < 1) {
+              requestAnimationFrame(animate);
+            }
+          };
+          
+          animate();
+        }
       }
-    };
+    }
+  };
   
     const clearWalletSearch = () => {
       setWalletAddress('');
@@ -733,111 +896,121 @@ const Universe = () => {
       </div>
 
       <Canvas 
-        camera={{ 
-          position: [0, 50, 100], 
-          fov: 65,
-          far: 2000,
-          near: 0.1
-        }} 
-        onCreated={({ camera }) => {
-          mainCameraRef.current = camera;
-        }}
-      >
-        <ambientLight intensity={0.4} />
-        <pointLight position={[10, 10, 10]} intensity={1.2} />
-         <UniverseSpheres selectedGalaxy={selectedGalaxy} />
-         <DynamicStarfield />
-        <CullingManager
-          galaxies={galaxies}
-          solitaryPlanets={solitaryPlanets}
-          selectedGalaxy={selectedGalaxy}
-          searchResult={searchResult}
-          calculateGalaxyPosition={calculateGalaxyPosition}
-          onSetVisible={handleSetVisible}
+  camera={{ 
+    position: [0, 50, 100], 
+    fov: 65,
+    far: 2000,
+    near: 0.1,
+    up: [0, 1, 0]
+  }} 
+  onCreated={({ camera }) => {
+    mainCameraRef.current = camera;
+    gl.setClearColor('#000000');
+  }}
+>
+  {/* Hyperspace effect */}
+   {hyperspaceActive && (
+    <HyperspaceTunnel 
+      active={true}
+      galaxyPosition={targetGalaxyPosition}
+    />
+  )}
+
+  {/* Universe reveal effect */}
+  {universeRevealActive && (
+    <UniverseReveal active={true} />
+  )}
+
+  {/* Only render scene elements when not in transition */}
+  {!hyperspaceActive && !universeRevealActive && (
+    <>
+      <ambientLight intensity={0.4} />
+      <pointLight position={[10, 10, 10]} intensity={1.2} />
+      <UniverseSpheres 
+        selectedGalaxy={selectedGalaxy}
+        hyperspaceActive={hyperspaceActive}
+        zoomPhase={zoomPhase}
+      />
+      <DynamicStarfield hyperspaceActive={hyperspaceActive} />
+            
+            <CullingManager
+              galaxies={galaxies}
+              solitaryPlanets={solitaryPlanets}
+              selectedGalaxy={selectedGalaxy}
+              searchResult={searchResult}
+              calculateGalaxyPosition={calculateGalaxyPosition}
+              onSetVisible={handleSetVisible}
+            />
+
+            {selectedGalaxy ? (
+        <SpiralGalaxy 
+          transactions={selectedGalaxy.transactions}
+          position={[0, 0, 0]}
+          isSelected={true}
+          colorIndex={galaxies.findIndex(g => g === selectedGalaxy)}
+          highlightedHash={searchResult}
+          lodLevel={objectLODs.get(`galaxy-${galaxies.findIndex(g => g === selectedGalaxy)}`) || 'HIGH'}
         />
+            ) : (
+              <>
+                {galaxies.map((galaxy, index) => (
+                  visibleObjects.has(`galaxy-${index}`) && (
+                    <SpiralGalaxy
+                      key={index}
+                      transactions={galaxy.transactions}
+                      position={calculateGalaxyPosition(index, galaxies.length)}
+                      onClick={() => handleGalaxyClick(galaxy)}
+                      isSelected={false}
+                      colorIndex={index}
+                      lodLevel={objectLODs.get(`galaxy-${index}`) || 'HIGH'}
+                    />
+                  )
+                ))}
 
-<ChunkAndLODManager
-    galaxies={galaxies}
-    solitaryPlanets={solitaryPlanets}
-    selectedGalaxy={selectedGalaxy}
-    calculateGalaxyPosition={calculateGalaxyPosition}
-    onUpdateVisible={handleSetVisible}
-    onUpdateLOD={setObjectLODs}
-  />
+                {solitaryPlanets.map((tx, index) => (
+                  visibleObjects.has(`planet-${index}`) && (
+                    <Planet
+                      key={tx.hash}
+                      transaction={tx}
+                      position={calculateGalaxyPosition(
+                        index + galaxies.length,
+                        solitaryPlanets.length + galaxies.length
+                      )}
+                      baseSize={1.5}
+                      colorIndex={index}
+                      isHighlighted={tx.hash === searchResult}
+                      lodLevel={objectLODs.get(`planet-${index}`) || 'HIGH'}
+                    />
+                  )
+                ))}
+              </>
+            )}
 
-{selectedGalaxy ? (
-  <SpiralGalaxy 
-    transactions={selectedGalaxy.transactions}
-    position={[0, 0, 0]}
-    isSelected={true}
-    colorIndex={galaxies.findIndex(g => g === selectedGalaxy)}
-    highlightedHash={searchResult}
-    lodLevel={objectLODs.get(`galaxy-${galaxies.findIndex(g => g === selectedGalaxy)}`) || 'HIGH'}
-  />
-) : (
-  <>
-    {galaxies.map((galaxy, index) => (
-      visibleObjects.has(`galaxy-${index}`) && (
-        <SpiralGalaxy
-          key={index}
-          transactions={galaxy.transactions}
-          position={calculateGalaxyPosition(index, galaxies.length)}
-          onClick={() => {
-            setSelectedGalaxy(galaxy);
-            if (mainCameraRef.current && controlsRef.current) {
-              mainCameraRef.current.position.set(0, 25, 50);
-              controlsRef.current.target.set(0, 0, 0);
-              controlsRef.current.update();
-            }
-          }}
-          isSelected={false}
-          colorIndex={index}
-          lodLevel={objectLODs.get(`galaxy-${index}`) || 'HIGH'}
-        />
-      )
-    ))}
-
-    {solitaryPlanets.map((tx, index) => (
-      visibleObjects.has(`planet-${index}`) && (
-        <Planet
-          key={tx.hash}
-          transaction={tx}
-          position={calculateGalaxyPosition(
-            index + galaxies.length,
-            solitaryPlanets.length + galaxies.length
-          )}
-          baseSize={1.5}
-          colorIndex={index}
-          isHighlighted={tx.hash === searchResult}
-          lodLevel={objectLODs.get(`planet-${index}`) || 'HIGH'}
-        />
-      )
-    ))}
-  </>
-)}
-
-<OrbitControls 
+            <OrbitControls 
   ref={controlsRef}
-  enableZoom={true}
-  maxDistance={selectedGalaxy ? 40 : 300}
-  minDistance={0.0001}
-  autoRotate={!selectedGalaxy}
+  enableZoom={!hyperspaceActive}
+  maxDistance={selectedGalaxy ? 40 : 1000}
+  minDistance={5}
+  autoRotate={!selectedGalaxy && !hyperspaceActive}
   autoRotateSpeed={0.3}
-  maxPolarAngle={Math.PI} // Changed from 0.75 to allow full vertical movement
-  minPolarAngle={0} // Changed from 0.25 to allow full vertical movement
-  zoomSpeed={2}
-  rotateSpeed={0.8}
+  maxPolarAngle={Math.PI}
+  minPolarAngle={0}
+  zoomSpeed={1}
+  rotateSpeed={0.5}
+  panSpeed={5}
   enableDamping={true}
-  dampingFactor={0.05}
+  dampingFactor={0.1}
   mouseButtons={{
     LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.DOLLY,
     RIGHT: THREE.MOUSE.PAN
   }}
-  panSpeed={15}
-  screenSpacePanning={true} // Changed to true for full 3D panning
-  enablePan={true}
-  keyPanSpeed={15}
+  screenSpacePanning={true}
+  enablePan={!hyperspaceActive}
+  keyPanSpeed={25}
 />
+          </>
+        )}
       </Canvas>
       <Minimap 
         mainCamera={mainCameraRef.current}
@@ -886,19 +1059,39 @@ const Universe = () => {
           }}
           onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
           onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-          onClick={() => {
-            setSelectedGalaxy(null);
-            setSearchResult(null);
-            if (mainCameraRef.current && controlsRef.current) {
-              mainCameraRef.current.position.set(0, 50, 100);
-              controlsRef.current.target.set(0, 0, 0);
-              controlsRef.current.update();
-            }
-          }}
+          // In your Universe component, the Back to Universe button has an error:
+// onClick={handleBackToUniverse}  // This is missing
+onClick={(handleBackToUniverse) => {               // You have this nested incorrectly
+  setSelectedGalaxy(null);
+  setSearchResult(null);
+  if (mainCameraRef.current && controlsRef.current) {
+    mainCameraRef.current.position.set(0, 50, 100);
+    controlsRef.current.target.set(0, 0, 0);
+    controlsRef.current.update(); // This is incorrect syntax
+  }
+}}
         >
           Back to Universe
         </button>
       )}
+      {loading && (
+  <div style={{
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    color: 'white',
+    background: 'rgba(0,0,0,0.8)',
+    padding: '20px',
+    borderRadius: '10px',
+    zIndex: 1000
+  }}>
+    Loading Transactions: {
+      galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
+      solitaryPlanets.length
+    }
+  </div>
+)}
     </div>
   );
 };
