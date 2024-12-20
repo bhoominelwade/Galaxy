@@ -10,21 +10,30 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
   
   const [geometry, materials, velocities] = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(20000 * 5);
-    const colors = new Float32Array(20000 * 5);
-    const velocities = new Float32Array(20000 * 3);
+    // Dramatically increased number of stars (10x more)
+    const positions = new Float32Array(900000 * 3);
+    const velocities = new Float32Array(600000 * 3);
     
+    // Enhanced color distribution for denser starfield
     const starColors = [
-      new THREE.Color('#FFE87C'),  // Yellow
-      new THREE.Color('#B39DDB'),  // Purple
-      new THREE.Color('#FFFFFF'),  // White
-      new THREE.Color('#64B5F6'),  // Blue
+      { color: new THREE.Color('#FFFFFF'), weight: 65 },    // White stars
+      { color: new THREE.Color('#BBDDFF'), weight: 20 },    // Blue-white
+      { color: new THREE.Color('#99CCFF'), weight: 10 },    // Blue
+      { color: new THREE.Color('#AADDFF'), weight: 3 },     // Bright blue
+      { color: new THREE.Color('#FFEECC'), weight: 1.5 },   // Slight yellow tinge
+      { color: new THREE.Color('#FFE4B5'), weight: 0.5 }    // Pale golden
     ];
+    
+    const totalWeight = starColors.reduce((sum, type) => sum + type.weight, 0);
+    const colorProbabilities = starColors.map(type => type.weight / totalWeight);
+
+    // Optimized space range for higher density
+    const spaceRange = 5000; // Decreased for denser appearance
 
     for (let i = 0; i < positions.length; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 4000;
-      positions[i + 1] = (Math.random() - 0.5) * 4000;
-      positions[i + 2] = (Math.random() - 0.5) * 4000;
+      positions[i] = (Math.random() - 0.5) * spaceRange;
+      positions[i + 1] = (Math.random() - 0.5) * spaceRange;
+      positions[i + 2] = (Math.random() - 0.5) * spaceRange;
 
       const phi = Math.random() * Math.PI * 2;
       const theta = Math.random() * Math.PI;
@@ -34,78 +43,117 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
       velocities[i + 1] = Math.sin(theta) * Math.sin(phi) * speed;
       velocities[i + 2] = Math.cos(theta) * speed;
 
-      const color = starColors[Math.floor(Math.random() * starColors.length)];
-      colors[i] = color.r;
-      colors[i + 1] = color.g;
-      colors[i + 2] = color.b;
+      // Color selection with cumulative probability
+      const rand = Math.random();
+      let cumulative = 0;
+      let selectedColor = starColors[0].color;
+      for (let j = 0; j < colorProbabilities.length; j++) {
+        cumulative += colorProbabilities[j];
+        if (rand <= cumulative) {
+          selectedColor = starColors[j].color;
+          break;
+        }
+      }
+
+      colors[i] = selectedColor.r;
+      colors[i + 1] = selectedColor.g;
+      colors[i + 2] = selectedColor.b;
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-    // Create star-shaped point texture
+    // Enhanced star texture
     const canvas = document.createElement('canvas');
-    canvas.width = 32;
-    canvas.height = 32;
+    canvas.width = 150;
+    canvas.height = 150;
     const ctx = canvas.getContext('2d');
-    
-    // Function to draw a star shape
-    const drawStar = (ctx, cx, cy, spikes, outerRadius, innerRadius) => {
-      let rot = Math.PI / 2 * 3;
-      let x = cx;
-      let y = cy;
-      const step = Math.PI / spikes;
 
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - outerRadius);
-
-      for (let i = 0; i < spikes; i++) {
-        x = cx + Math.cos(rot) * outerRadius;
-        y = cy + Math.sin(rot) * outerRadius;
-        ctx.lineTo(x, y);
-        rot += step;
-
-        x = cx + Math.cos(rot) * innerRadius;
-        y = cy + Math.sin(rot) * innerRadius;
-        ctx.lineTo(x, y);
-        rot += step;
-      }
+    const drawSpike = (ctx, x, y, length, width, intensity, angle = 0) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
       
-      ctx.lineTo(cx, cy - outerRadius);
-      ctx.closePath();
+      const gradient = ctx.createLinearGradient(0, -length, 0, length);
+      gradient.addColorStop(0, `rgba(255, 255, 255, 0)`);
+      gradient.addColorStop(0.3, `rgba(255, 255, 255, ${intensity * 0.1})`);
+      gradient.addColorStop(0.4, `rgba(255, 255, 255, ${intensity * 0.4})`);
+      gradient.addColorStop(0.5, `rgba(255, 255, 255, ${intensity})`);
+      gradient.addColorStop(0.6, `rgba(255, 255, 255, ${intensity * 0.4})`);
+      gradient.addColorStop(0.7, `rgba(255, 255, 255, ${intensity * 0.1})`);
+      gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+      
+      ctx.beginPath();
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = width;
+      ctx.lineCap = 'round';
+      ctx.moveTo(0, -length);
+      ctx.lineTo(0, length);
+      ctx.stroke();
+      ctx.restore();
     };
 
-    // Clear canvas
-    ctx.clearRect(0, 0, 32, 32);
+    ctx.clearRect(0, 0, 128, 128);
     
-    // Create gradient for the star
-    const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
-    gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.3)');
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    
-    ctx.fillStyle = gradient;
-    
-    // Draw star shape
-    drawStar(ctx, 16, 16, 4, 16,8);
-    ctx.fill();
-    
-    const texture = new THREE.CanvasTexture(canvas);
+    const drawGlow = (radius, alpha) => {
+      const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, radius);
+      gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+      gradient.addColorStop(0.2, `rgba(230, 240, 255, ${alpha * 0.8})`);
+      gradient.addColorStop(0.5, `rgba(200, 220, 255, ${alpha * 0.4})`);
+      gradient.addColorStop(0.8, `rgba(180, 200, 255, ${alpha * 0.2})`);
+      gradient.addColorStop(1, 'rgba(150, 180, 255, 0)');
+      
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 128, 128);
+    };
 
+    drawGlow(64, 0.2);
+    drawGlow(48, 0.3);
+    drawGlow(32, 0.4);
+    drawGlow(24, 0.5);
+
+    const center = 64;
+    
+    for (let i = 0; i < 4; i++) {
+      const angle = (i * Math.PI) / 2;
+      drawSpike(ctx, center, center, 60, 2, 1.0, angle);
+      drawSpike(ctx, center, center, 58, 1.5, 0.7, angle + 0.02);
+    }
+
+    for (let i = 0; i < 4; i++) {
+      const angle = (i * Math.PI) / 2 + Math.PI / 4;
+      drawSpike(ctx, center, center, 45, 1, 0.5, angle);
+    }
+
+    const coreGradient = ctx.createRadialGradient(center, center, 0, center, center, 8);
+    coreGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    coreGradient.addColorStop(0.3, 'rgba(240, 248, 255, 0.8)');
+    coreGradient.addColorStop(0.5, 'rgba(220, 235, 255, 0.6)');
+    coreGradient.addColorStop(0.7, 'rgba(200, 220, 255, 0.4)');
+    coreGradient.addColorStop(1, 'rgba(180, 200, 255, 0)');
+
+    ctx.beginPath();
+    ctx.fillStyle = coreGradient;
+    ctx.arc(center, center, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    // Adjusted materials for better visibility with more stars
     const coreMaterial = new THREE.PointsMaterial({
-      size: 3,
+      size: 2.5,
       map: texture,
       vertexColors: true,
       transparent: true,
-      opacity: 1,
+      opacity: 0.85,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       sizeAttenuation: true,
     });
 
     const glowMaterial = new THREE.PointsMaterial({
-      size: 6,
+      size: 5,
       map: texture,
       vertexColors: true,
       transparent: true,
@@ -147,7 +195,7 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
           positions[i + 2] * positions[i + 2]
         );
 
-        if (distance > 2000) {
+        if (distance > 3000) {
           positions[i] = 0;
           positions[i + 1] = 0;
           positions[i + 2] = 0;
@@ -171,7 +219,7 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
     } else {
       transitionStartRef.current = null;
       materials[0].size = 3;
-      materials[1].size = 6;
+      materials[1].size = 5;
     }
 
     pointsRef.current.geometry.attributes.position.needsUpdate = true;

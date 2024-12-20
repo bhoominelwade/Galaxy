@@ -1,5 +1,4 @@
-// Planet.jsx
-import React, { useRef, useState, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -20,6 +19,16 @@ const PLANET_TYPES = [
   { name: 'uranus', orbitRadius: 140, speed: 0.4 },
   { name: 'neptune', orbitRadius: 180, speed: 0.2 }
 ];
+
+// Planet name components
+const PLANET_PREFIXES = [
+  'Cosmo', 'Pulsar', 'Solstice', 'Carina', 'Indus', 'Nova', 'Vega', 'Lyra',
+  'Hydra', 'Orion', 'Andromeda', 'Phoenix', 'Draco', 'Aquila', 'Centauri'
+];
+
+const PLANET_NUMBERS = Array.from({ length: 10000 }, (_, i) => 
+  String(i).padStart(4, '0')
+);
 
 const calculatePlanetSize = (amount) => {
   if (!amount) return STANDARD_PLANET_SIZE;
@@ -46,64 +55,111 @@ const formatAmount = (amount) => {
   return amount.toFixed(1);
 };
 
-const PlanetMesh = ({ planetType, transaction, onHover, isSelected = false, isHighlighted = false }) => {
-  const planetRef = useRef();
-  const glowRef = useRef();
-  const [hovered, setHovered] = useState(false);
-  const [glowOpacity, setGlowOpacity] = useState(0);
+const generatePlanetName = (hash) => {
+  if (!hash) return 'Unknown-0000';
+  
+  const prefixIndex = parseInt(hash.slice(0, 4), 16) % PLANET_PREFIXES.length;
+  const numberValue = parseInt(hash.slice(4, 8), 16) % 10000;
+  
+  return `${PLANET_PREFIXES[prefixIndex]}-${PLANET_NUMBERS[numberValue]}`;
+};
 
-  const baseSize = calculatePlanetSize(transaction?.amount);
-  const scaleFactor = isSelected ? 1 : 0.6;
+const generatePlanetColor = (hash) => {
+  if (!hash) return new THREE.Color(0x4169E1); // Default royal blue
+  
+  // Use hash to generate consistent colors for the same transaction
+  const hue = parseInt(hash.slice(-6), 16) / 0xffffff;
+  const saturation = 0.5 + (parseInt(hash.slice(0, 2), 16) / 512);
+  const lightness = 0.3 + (parseInt(hash.slice(2, 4), 16) / 512);
+  
+  const color = new THREE.Color();
+  color.setHSL(hue, saturation, lightness);
+  return color;
+};
+
+const PlanetLabel = ({ hash, position, planetSize }) => {
+  const planetName = useMemo(() => generatePlanetName(hash), [hash]);
+  
+  return (
+    <group position={position}>
+      <Html
+        transform
+        style={{
+          transition: 'all 0.2s',
+          opacity: 0.8,
+          transform: 'scale(1.0)',
+          zIndex: 1
+        }}
+        position={[planetSize * 1.3, 0, 0]}
+        center
+        distanceFactor={5}
+        sprite
+        renderOrder={1}
+        className="planet-label"
+      >
+        <div className="select-none pointer-events-none" style={{
+          color: '#8494b4',
+          fontSize: '2.5rem',
+          fontFamily: 'monospace',
+          whiteSpace: 'nowrap',
+          textAlign: 'left',
+          textShadow: '0 0 10px rgba(132, 148, 180, 0.3)',
+          transform: 'scale(1.8)',
+          userSelect: 'none'
+        }}>
+          {planetName}
+        </div>
+      </Html>
+    </group>
+  );
+};
+
+const PlanetMesh = ({ planetType, transaction, onHover, isSelected = false }) => {
+  const planetRef = useRef();
+  const [hovered, setHovered] = useState(false);
+  
+  const baseSize = calculatePlanetSize(transaction?.amount) || 1;
+  const scaleFactor = isSelected ? 1.2 : 1;
   const planetSize = baseSize * scaleFactor;
 
-  // Generate a consistent color based on transaction hash
-  const planetColor = useMemo(() => {
-    if (!transaction?.hash) return new THREE.Color(0x4169E1); // Default blue
-    const hash = parseInt(transaction.hash.slice(-6), 16);
-    const hue = (hash % 360) / 360;
-    const saturation = 0.7;
-    const lightness = 0.6;
-    const color = new THREE.Color().setHSL(hue, saturation, lightness);
-    return color;
+  const material = useMemo(() => {
+    const baseColor = generatePlanetColor(transaction?.hash);
+    
+    return new THREE.MeshPhysicalMaterial({
+      color: baseColor,
+      metalness: 0.1,
+      roughness: 0.7,
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.4,
+      emissive: baseColor.clone().multiplyScalar(0.2),
+      envMapIntensity: 0.8,
+    });
   }, [transaction?.hash]);
-
-  // Glow effect parameters
-  const glowSize = planetSize * 1.2;
-  const glowColor = isHighlighted ? new THREE.Color(0x00ffff) : planetColor.clone().multiplyScalar(1.2);
 
   useFrame((state) => {
     if (planetRef.current) {
       planetRef.current.rotation.y += ROTATION_SPEED;
-    }
-    
-    if (glowRef.current && (isHighlighted || hovered)) {
-      const time = state.clock.getElapsedTime();
-      const pulseScale = 1 + Math.sin(time * 2) * 0.05;
-      glowRef.current.scale.set(pulseScale, pulseScale, pulseScale);
+      
+      if (hovered) {
+        planetRef.current.rotation.y += ROTATION_SPEED * 0.5;
+      }
     }
   });
 
-  useEffect(() => {
-    setGlowOpacity(isHighlighted || hovered ? 0.7 : 0);
-  }, [isHighlighted, hovered]);
-
   return (
     <group>
-      {/* Glow sphere */}
-      <mesh ref={glowRef}>
-        <sphereGeometry args={[glowSize, 32, 32]} />
-        <meshBasicMaterial
-          color={glowColor}
-          transparent
-          opacity={glowOpacity}
-          side={THREE.BackSide}
-          blending={THREE.AdditiveBlending}
-        />
-      </mesh>
+      <ambientLight intensity={0.2} />
+      
+      <directionalLight 
+        position={[5, 5, 5]} 
+        intensity={1} 
+        castShadow 
+      />
 
-      {/* Main planet sphere */}
       <mesh
         ref={planetRef}
+        castShadow
+        receiveShadow
         onPointerOver={(e) => {
           e.stopPropagation();
           setHovered(true);
@@ -123,36 +179,39 @@ const PlanetMesh = ({ planetType, transaction, onHover, isSelected = false, isHi
           }
         }}
       >
-        <sphereGeometry args={[planetSize, 32, 32]} />
-        <meshStandardMaterial
-          color={planetColor}
-          metalness={0.4}
-          roughness={0.7}
-          emissive={isHighlighted ? glowColor : planetColor}
-          emissiveIntensity={isHighlighted ? 0.5 : 0.2}
+        <sphereGeometry args={[planetSize, 64, 64]} />
+        <primitive object={material} attach="material" />
+      </mesh>
+
+      {/* Atmosphere effect */}
+      <mesh scale={[planetSize * 1.05, planetSize * 1.05, planetSize * 1.05]}>
+        <sphereGeometry args={[1, 32, 32]} />
+        <meshBasicMaterial
+          color={material.color}
+          transparent
+          opacity={0.1}
+          side={THREE.BackSide}
         />
       </mesh>
 
-      {/* Ambient light for highlighted/hovered planets */}
-      {(isHighlighted || hovered) && (
-        <pointLight
-          color={glowColor}
-          intensity={2}
-          distance={planetSize * 10}
-          decay={2}
-        />
-      )}
-
-      {/* Planet's base light */}
+      {/* Planet lighting */}
       <pointLight
-        position={[planetSize * 2, 0, 0]}
-        intensity={0.8}
+        position={[planetSize * 1.5, planetSize * 1.5, planetSize * 1.5]}
+        intensity={1}
+        distance={planetSize * 10}
+        decay={2}
+      />
+      
+      <pointLight
+        position={[-planetSize * 1.5, -planetSize * 1.5, -planetSize * 1.5]}
+        intensity={0.5}
         distance={planetSize * 8}
-        color={planetColor}
+        color="#40E0D0"
+        decay={2}
       />
 
-      {/* Tooltip */}
-      {(hovered || isHighlighted) && transaction && (
+      {/* Info tooltip on hover */}
+      {(hovered || isSelected) && transaction && (
         <Html>
           <div style={{
             background: 'rgba(0, 0, 0, 0.8)',
@@ -160,24 +219,32 @@ const PlanetMesh = ({ planetType, transaction, onHover, isSelected = false, isHi
             borderRadius: '4px',
             whiteSpace: 'nowrap',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            gap: '8px',
+            gap: '4px',
             color: 'white',
             fontSize: '12px',
             fontFamily: 'monospace',
             backdropFilter: 'blur(4px)',
-            border: `1px solid ${isHighlighted ? '#00ffff33' : 'rgba(255, 255, 255, 0.1)'}`,
-            boxShadow: isHighlighted ? '0 0 10px #00ffff33' : 'none'
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            transform: 'translateY(-20px)',
+            pointerEvents: 'none',
           }}>
-            <span style={{ opacity: 0.7 }}>TX: {transaction.hash?.slice(0, 8)}...</span>
-            <span style={{ 
-              backgroundColor: isHighlighted ? 'rgba(0, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-              padding: '2px 6px',
-              borderRadius: '3px',
-              fontWeight: 'bold'
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
             }}>
-              {formatAmount(transaction.amount)}
-            </span>
+              <span style={{ opacity: 0.7 }}>TX: {transaction.hash?.slice(0, 8)}...</span>
+              <span style={{ 
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                padding: '2px 6px',
+                borderRadius: '3px',
+                fontWeight: 'bold'
+              }}>
+                {formatAmount(transaction.amount)}
+              </span>
+            </div>
           </div>
         </Html>
       )}
@@ -199,7 +266,11 @@ const Planet = ({ transaction, position, onHover, isHighlighted = false, lodLeve
         transaction={transaction}
         onHover={onHover}
         isSelected={isSelected}
-        isHighlighted={isHighlighted}
+      />
+      <PlanetLabel 
+        hash={transaction?.hash}
+        position={[0, 0, 0]}
+        planetSize={calculatePlanetSize(transaction?.amount)}
       />
     </group>
   );
