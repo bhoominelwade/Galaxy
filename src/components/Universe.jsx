@@ -9,12 +9,13 @@ import ChunkAndLODManager from './optimizations/ChunkAndLODManager';
 import { LOD_LEVELS } from './optimizations/constants';
 import UniverseSpheres from './UniverseSperese.jsx'
 import DynamicStarfield from './DynamicStarfield.jsx';
-import Minimap from './Minimap';
+import MapNavigation from './Minimap';
 import CullingManager from './CullingManager'
 import UniverseReveal from './UniverseReveal.jsx'
 import AudioManager from './AudioManager'
 import { TrendingUp } from 'lucide-react';
 import TransactionAnalytics from './TransactionAnalytics';
+import WalletSearch from './WalletSearch'
 
 
 
@@ -75,6 +76,7 @@ const Universe = () => {
   const [zoomPhase, setZoomPhase] = useState('none');
   const [universeRevealActive, setUniverseRevealActive] = useState(false);
   const [statusInfo, setStatusInfo] = useState('');
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
 
   const galaxyPositionsRef = useRef(new Map());
   const calculateGalaxyPosition = useCallback((index, total) => {
@@ -839,165 +841,27 @@ useEffect(() => {
 
     return (
       <div style={{ width: '100vw', height: '100vh', background: '#000000' }}>
-        {/* Audio Manager - Top Left */}
-        <div style={{
-          position: 'absolute',
-          top: '20px',
-          left: '20px',
-          zIndex: 1000
-        }}>
-          <AudioManager />
-        </div>
+       <AudioManager 
+        isMapExpanded={isMapExpanded}
+      />
   
-        {/* Wallet Search Form - Top Right */}
-        <div style={{
-          position: 'absolute',
-          top: '20px',
-          right: '20px',
-          zIndex: 1000,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-end',
-          gap: '10px',
-          maxWidth: '400px'
-        }}>
-          <form onSubmit={handleWalletSearch} style={{
-            display: 'flex',
-            gap: '10px',
-            width: '100%'
-          }}>
-            <input
-              type="text"
-              value={walletAddress}
-              onChange={(e) => setWalletAddress(e.target.value)}
-              placeholder="Enter wallet address..."
-              style={{
-                padding: '8px 12px',
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '4px',
-                color: 'white',
-                outline: 'none',
-                width: '250px',
-                backdropFilter: 'blur(10px)',
-              }}
-            />
-            <button type="submit" style={{
-              padding: '8px 16px',
-              background: 'rgba(255, 255, 255, 0.1)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '4px',
-              color: 'white',
-              cursor: 'pointer',
-            }}>
-              Search
-            </button>
-            {isWalletView && (
-              <button
-                type="button"
-                onClick={clearWalletSearch}
-                style={{
-                  padding: '8px',
-                  background: 'rgba(255, 77, 77, 0.2)',
-                  border: '1px solid rgba(255, 77, 77, 0.3)',
-                  borderRadius: '4px',
-                  color: 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                ✕
-              </button>
-            )}
-          </form>
-  
-          {walletSearchError && (
-            <div style={{
-              color: '#ff6b6b',
-              background: 'rgba(0, 0, 0, 0.7)',
-              padding: '8px',
-              borderRadius: '4px',
-            }}>
-              {walletSearchError}
-            </div>
-          )}
-  
-          {isWalletView && userTransactions.length > 0 && (
-            <div style={{
-              background: 'rgba(0, 0, 0, 0.8)',
-              padding: '10px',
-              borderRadius: '4px',
-              width: '100%',
-              maxHeight: '300px',
-              backdropFilter: 'blur(10px)',
-              display: 'flex',
-              flexDirection: 'column',
-              fontSize: '13px'
-            }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '6px',
-                color: 'white',
-                padding: '0 6px',
-                fontSize: '12px'
-              }}>
-                <span>Wallet: {walletAddress.slice(0, 8)}...</span>
-                <span>{userTransactions.length} transactions</span>
-              </div>
-              
-              <div style={{
-                overflowY: 'auto',
-                maxHeight: '250px',
-                scrollbarWidth: 'thin',
-                scrollbarColor: 'rgba(255,255,255,0.3) transparent'
-              }}>
-                <table style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  color: 'white',
-                }}>
-                  <thead style={{
-                    position: 'sticky',
-                    top: 0,
-                    background: 'rgba(0, 0, 0, 0.9)',
-                    zIndex: 1,
-                    fontSize: '10px'
-                  }}>
-                    <tr>
-                      <th style={{padding: '6px', textAlign: 'left'}}>Transaction ID</th>
-                      <th style={{padding: '6px', textAlign: 'right'}}>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {userTransactions.map(tx => (
-                      <tr 
-                        key={tx.hash} 
-                        style={{
-                          borderTop: '1px solid rgba(255,255,255,0.1)',
-                          cursor: 'pointer',
-                          transition: 'background 0.2s'
-                        }}
-                        onClick={() => handleTransactionHighlight(tx.hash)}
-                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <td style={{padding: '4px 6px'}}>{tx.hash.slice(0,10)}...</td>
-                        <td style={{padding: '4px 6px', textAlign: 'right'}}>{tx.amount.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
+        <WalletSearch 
+      galaxies={galaxies}
+      solitaryPlanets={solitaryPlanets}
+      onTransactionSelect={(hash, galaxy) => {
+        setSearchResult(hash);
+        setSelectedGalaxy(galaxy);
+      }}
+      mainCameraRef={mainCameraRef}
+      controlsRef={controlsRef}
+      calculateGalaxyPosition={calculateGalaxyPosition}
+    />
   
         {/* Nova Analytics */}
         <div style={{
           position: 'absolute',
-          bottom: '7rem',
-          left: '1rem',
+          bottom: '1rem',
+          left: '76rem',
           zIndex: 10,
           color: 'white',
           background: 'rgba(0, 0, 0, 0.7)',
@@ -1006,7 +870,8 @@ useEffect(() => {
           fontFamily: 'monospace',
           backdropFilter: 'blur(4px)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
-          minWidth: '300px'
+          minWidth: '300px',
+          // marginLeft: '90rem',
         }}>
           <div style={{
             display: 'flex',
@@ -1198,15 +1063,16 @@ useEffect(() => {
         </div>
   
         {/* Minimap */}
-        <Minimap 
-          mainCamera={mainCameraRef.current}
-          galaxyPositions={galaxyPositions}
-          onNavigate={handleMinimapNavigate}
-          selectedGalaxy={selectedGalaxy ? galaxies.indexOf(selectedGalaxy) : null}
-        />
+        <MapNavigation 
+  mainCamera={mainCameraRef.current}
+  galaxyPositions={galaxyPositions}
+  onNavigate={handleMinimapNavigate}
+  selectedGalaxy={selectedGalaxy ? galaxies.indexOf(selectedGalaxy) : null}
+   onExpandChange={setIsMapExpanded} 
+/>
   
         {/* Stats */}
-        <div style={{ 
+        {/* <div style={{ 
           position: 'absolute', 
           bottom: '1rem', 
           left: '1rem', 
@@ -1227,30 +1093,55 @@ useEffect(() => {
             galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
             solitaryPlanets.length
           }</div>
-        </div>
+        </div> */}
   
         {/* Back to Universe Button */}
         {selectedGalaxy && (
-          <button
-            style={{
-              position: 'absolute',
-              top: '20px',
-              left: '220px',
-              padding: '10px 20px',
-              background: 'rgba(255,255,255,0.1)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              backdropFilter: 'blur(10px)',
-              transition: 'all 0.3s ease',
-            }}
-            onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
-            onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-            onClick={handleBackToUniverse}
-          >
-            Back to Universe
-      </button>
+         <button
+        style={{
+      position: 'absolute',
+      top: '20px',
+      left: '100px',
+      padding: '10px',
+      background: 'rgba(0, 0, 0, 0.3)',
+      color: 'white',
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      borderRadius: '50%',  // Changed to make it perfectly circular
+      cursor: 'pointer',
+      backdropFilter: 'blur(4px)',
+      transition: 'all 0.4s ease-in-out',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',  // Added to center the icon
+      gap: '8px',
+      fontSize: '14px',
+      height: '55px',
+      width: '55px',  // Changed minWidth to width for exact sizing
+      outline: 'none',  // Added to remove focus outline
+      zIndex: 1000,   // Match other button widths
+        }}
+       onMouseEnter={(e) => {
+      e.target.style.border = '1px solid rgba(0, 157, 255, 0.8)';  // Added blue border
+      e.target.style.boxShadow = '0 0 10px rgba(0, 157, 255, 0.3)';  // Added subtle blue glow
+    }}
+    onMouseLeave={(e) => {
+      e.target.style.background = 'rgba(0, 0, 0, 0.3)';
+      e.target.style.transform = 'scale(1)';
+      e.target.style.border = '1px solid rgba(255, 255, 255, 0.2)';  // Reset border
+      e.target.style.boxShadow = 'none';  // Remove glow
+    }}
+    onClick={handleBackToUniverse}
+    aria-label="Back to Universe"
+  >
+    <i 
+      className="ri-arrow-left-line" 
+      style={{ 
+        fontSize: '1.2em',
+        pointerEvents: 'none',
+        transition: 'color 0.4s ease-in-out' // Added to prevent icon from interfering with hover
+      }} 
+    />
+  </button>
       )}
       {loading && (
   <div style={{

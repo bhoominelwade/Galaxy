@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Twitter, FileText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import './Landing.css'
+import '../styles/Landing.css'
 
 export default function LandingPage() {
   const navigate = useNavigate();

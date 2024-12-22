@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const AudioManager = ({ hyperspaceActive }) => {
+const AudioManager = ({ hyperspaceActive, isMapExpanded, selectedGalaxy, onBackToUniverse }) => {
   const backgroundMusicRef = useRef(null);
   const hyperspaceSoundRef = useRef(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   // Initialize audio on component mount
   useEffect(() => {
@@ -21,7 +23,6 @@ const AudioManager = ({ hyperspaceActive }) => {
     hyperspaceSoundRef.current.volume = 0.9;
     hyperspaceSoundRef.current.preload = 'auto';
 
-    // Add loading event listeners
     const handleBackgroundLoaded = () => {
       console.log('Background music loaded');
     };
@@ -52,6 +53,7 @@ const AudioManager = ({ hyperspaceActive }) => {
           if (playPromise !== undefined) {
             await playPromise;
             setIsReady(true);
+            setIsPlaying(true);
             console.log('Audio playback started successfully');
           }
         }
@@ -96,15 +98,31 @@ const AudioManager = ({ hyperspaceActive }) => {
     handleHyperspace();
   }, [hyperspaceActive, isReady, isMuted]);
 
-  // Handle muting
-  useEffect(() => {
-    if (backgroundMusicRef.current) {
-      backgroundMusicRef.current.volume = isMuted ? 0 : 0.8;
+  // Handle button click
+  const handleClick = () => {
+    if (selectedGalaxy) {
+      onBackToUniverse();
+    } else {
+      setIsMuted(!isMuted);
+      if (!isMuted) {
+        // Muting
+        if (backgroundMusicRef.current) {
+          backgroundMusicRef.current.volume = 0;
+        }
+        if (hyperspaceSoundRef.current) {
+          hyperspaceSoundRef.current.volume = 0;
+        }
+      } else {
+        // Unmuting
+        if (backgroundMusicRef.current) {
+          backgroundMusicRef.current.volume = 0.8;
+        }
+        if (hyperspaceSoundRef.current) {
+          hyperspaceSoundRef.current.volume = 0.9;
+        }
+      }
     }
-    if (hyperspaceSoundRef.current) {
-      hyperspaceSoundRef.current.volume = isMuted ? 0 : 0.9;
-    }
-  }, [isMuted]);
+  };
 
   // Cleanup on unmount
   useEffect(() => {
@@ -120,36 +138,41 @@ const AudioManager = ({ hyperspaceActive }) => {
     };
   }, []);
 
+  const expanded = typeof isMapExpanded === 'boolean' ? isMapExpanded : false;
+
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: '20px',
-      right: '20px',
-      zIndex: 1000
-    }}>
-      <button
-        onClick={() => setIsMuted(!isMuted)}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          padding: '10px',
-          width: '44px',
-          height: '44px',
-          color: 'white',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '20px',
-          transition: 'transform 0.3s'
+    <button
+      onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        position: 'absolute',
+        left: '20px',
+        top: expanded ? '230px' : '90px',
+        padding: '10px',
+        background: 'rgba(0, 0, 0, 0.3)',
+        color: isHovered ? '#24D2FB' : 'white',
+        border: `1px solid ${isHovered ? '#24D2FB' : 'rgba(255, 255, 255, 0.2)'}`,
+        borderRadius: '50px',
+        cursor: 'pointer',
+        backdropFilter: 'blur(4px)',
+        transition: 'all 0.4s ease-in-out',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '55px',
+        height: '55px',
+        zIndex: 1,
+      }}
+    >
+      <i 
+        className={selectedGalaxy ? "ri-arrow-left-line" : (isMuted ? "ri-volume-mute-line" : "ri-volume-up-line")}
+        style={{ 
+          fontSize: '1.2em',
+          transition: 'all 0.1s ease-in-out'
         }}
-        onMouseOver={(e) => e.target.style.transform = 'scale(1.1)'}
-        onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
-        aria-label={isMuted ? 'Unmute' : 'Mute'}
-      >
-        {isMuted ? '🔇' : '🔊'}
-      </button>
-    </div>
+      />
+    </button>
   );
 };
 

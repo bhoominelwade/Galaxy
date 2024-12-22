@@ -1,62 +1,51 @@
 import { memo, useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-const DynamicStarfield = memo(({ hyperspaceActive }) => {
+//DynamicStarfield - Creates a static starfield visualization
+
+const DynamicStarfield = memo(() => {
+  // Refs for Three.js objects
   const pointsRef = useRef();
   const glowPointsRef = useRef();
-  const velocitiesRef = useRef();
-  const transitionStartRef = useRef(null);
   
-  const [geometry, materials, velocities] = useMemo(() => {
+  // Create geometry and materials once on mount
+  const [geometry, materials] = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(900000 * 3);
-    const velocities = new Float32Array(600000 * 3);
-    // Define colors array that was missing
-    const colors = new Float32Array(900000 * 3);
+    const STAR_COUNT = 12000;
+    const SPACE_RANGE = 2500; // Defines the size of star field
+
+    // Initialize arrays for star properties
+    const positions = new Float32Array(STAR_COUNT * 3);
+    const colors = new Float32Array(STAR_COUNT * 3);
     
-    // Enhanced color distribution for denser starfield
+    // Define star color distribution
     const starColors = [
-      { color: new THREE.Color('#FFFFFF'), weight: 65 },    // White stars
-      { color: new THREE.Color('#BBDDFF'), weight: 20 },    // Blue-white
-      { color: new THREE.Color('#99CCFF'), weight: 10 },    // Blue
-      { color: new THREE.Color('#AADDFF'), weight: 3 },     // Bright blue
-      { color: new THREE.Color('#FFEECC'), weight: 1.5 },   // Slight yellow tinge
-      { color: new THREE.Color('#FFE4B5'), weight: 0.5 }    // Pale golden
+      { color: new THREE.Color('#FFFFFF'), weight: 65 },  // White stars
+      { color: new THREE.Color('#BBDDFF'), weight: 20 },  // Blue-white
+      { color: new THREE.Color('#99CCFF'), weight: 10 },  // Blue
+      { color: new THREE.Color('#AADDFF'), weight: 3 },   // Bright blue
+      { color: new THREE.Color('#FFEECC'), weight: 1.5 }, // Slight yellow
+      { color: new THREE.Color('#FFE4B5'), weight: 0.5 }  // Pale golden
     ];
     
+    // Calculate color probabilities
     const totalWeight = starColors.reduce((sum, type) => sum + type.weight, 0);
     const colorProbabilities = starColors.map(type => type.weight / totalWeight);
 
-    const spaceRange = 5000;
-
+    // Initialize star positions and colors
     for (let i = 0; i < positions.length; i += 3) {
-      // Position calculation
-      positions[i] = (Math.random() - 0.5) * spaceRange;
-      positions[i + 1] = (Math.random() - 0.5) * spaceRange;
-      positions[i + 2] = (Math.random() - 0.5) * spaceRange;
+      // Random position within space range
+      positions[i] = (Math.random() - 0.5) * SPACE_RANGE;
+      positions[i + 1] = (Math.random() - 0.5) * SPACE_RANGE;
+      positions[i + 2] = (Math.random() - 0.5) * SPACE_RANGE;
 
-      // Velocity calculation
-      const phi = Math.random() * Math.PI * 2;
-      const theta = Math.random() * Math.PI;
-      const speed = Math.random() * 2 + 1;
-      
-      velocities[i] = Math.sin(theta) * Math.cos(phi) * speed;
-      velocities[i + 1] = Math.sin(theta) * Math.sin(phi) * speed;
-      velocities[i + 2] = Math.cos(theta) * speed;
-
-      // Color selection with cumulative probability
-      const rand = Math.random();
+      // Select color based on probability distribution
       let cumulative = 0;
-      let selectedColor = starColors[0].color;
-      
-      for (let j = 0; j < colorProbabilities.length; j++) {
-        cumulative += colorProbabilities[j];
-        if (rand <= cumulative) {
-          selectedColor = starColors[j].color;
-          break;
-        }
-      }
+      const rand = Math.random();
+      const selectedColor = starColors.find(({ weight }) => {
+        cumulative += weight / totalWeight;
+        return rand <= cumulative;
+      })?.color || starColors[0].color;
 
       colors[i] = selectedColor.r;
       colors[i + 1] = selectedColor.g;
@@ -66,13 +55,14 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-    // Create star texture
+    // Create enhanced star texture
     const canvas = document.createElement('canvas');
     canvas.width = 150;
     canvas.height = 150;
     const ctx = canvas.getContext('2d');
+    const center = 64;
 
-    // Helper function for drawing spikes
+    // Helper function to draw star spikes
     const drawSpike = (ctx, x, y, length, width, intensity, angle = 0) => {
       ctx.save();
       ctx.translate(x, y);
@@ -87,20 +77,17 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
       gradient.addColorStop(0.7, `rgba(255, 255, 255, ${intensity * 0.1})`);
       gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
       
-      ctx.beginPath();
       ctx.strokeStyle = gradient;
       ctx.lineWidth = width;
       ctx.lineCap = 'round';
+      ctx.beginPath();
       ctx.moveTo(0, -length);
       ctx.lineTo(0, length);
       ctx.stroke();
       ctx.restore();
     };
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Helper function for drawing glow
+    // Helper function to draw star glow
     const drawGlow = (radius, alpha) => {
       const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, radius);
       gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
@@ -110,18 +97,15 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
       gradient.addColorStop(1, 'rgba(150, 180, 255, 0)');
       
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, 128, 128);
     };
 
-    // Draw multiple glow layers
-    drawGlow(64, 0.2);
-    drawGlow(48, 0.3);
-    drawGlow(32, 0.4);
-    drawGlow(24, 0.5);
+    // Draw star texture layers
+    [64, 48, 32, 24].forEach((radius, i) => {
+      drawGlow(radius, 0.2 + (i * 0.1));
+    });
 
-    const center = canvas.width / 2;
-    
-    // Draw main spikes
+    // Draw primary spikes
     for (let i = 0; i < 4; i++) {
       const angle = (i * Math.PI) / 2;
       drawSpike(ctx, center, center, 60, 2, 1.0, angle);
@@ -130,8 +114,7 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
 
     // Draw secondary spikes
     for (let i = 0; i < 4; i++) {
-      const angle = (i * Math.PI) / 2 + Math.PI / 4;
-      drawSpike(ctx, center, center, 45, 1, 0.5, angle);
+      drawSpike(ctx, center, center, 45, 1, 0.5, (i * Math.PI) / 2 + Math.PI / 4);
     }
 
     // Draw star core
@@ -151,99 +134,32 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
 
-    // Create materials
-    const coreMaterial = new THREE.PointsMaterial({
-      size: 2.5,
-      map: texture,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      sizeAttenuation: true,
-    });
+    // Create materials for core and glow layers
+    const materials = [
+      new THREE.PointsMaterial({
+        size: 3,
+        map: texture,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        sizeAttenuation: true,
+      }),
+      new THREE.PointsMaterial({
+        size: 5,
+        map: texture,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.3,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        sizeAttenuation: true,
+      })
+    ];
 
-    const glowMaterial = new THREE.PointsMaterial({
-      size: 5,
-      map: texture,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.3,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      sizeAttenuation: true,
-    });
-
-    return [geometry, [coreMaterial, glowMaterial], velocities];
+    return [geometry, materials];
   }, []);
-
-  velocitiesRef.current = velocities;
-
-  useFrame((state, delta) => {
-    if (!pointsRef.current || !glowPointsRef.current) return;
-
-    const positions = pointsRef.current.geometry.attributes.position.array;
-    const currentTime = state.clock.getElapsedTime();
-
-    if (hyperspaceActive) {
-      if (transitionStartRef.current === null) {
-        transitionStartRef.current = currentTime;
-      }
-
-      const transitionProgress = Math.min((currentTime - transitionStartRef.current) * 2, 1);
-      const baseSpeed = delta * 200 * transitionProgress;
-
-      for (let i = 0; i < positions.length; i += 3) {
-        const vel = velocitiesRef.current;
-        
-        // Update positions
-        positions[i] += vel[i] * baseSpeed;
-        positions[i + 1] += vel[i + 1] * baseSpeed;
-        positions[i + 2] += vel[i + 2] * baseSpeed;
-
-        // Check if star needs to be reset
-        const distance = Math.sqrt(
-          positions[i] * positions[i] + 
-          positions[i + 1] * positions[i + 1] + 
-          positions[i + 2] * positions[i + 2]
-        );
-
-        if (distance > 3000) {
-          // Reset position
-          positions[i] = 0;
-          positions[i + 1] = 0;
-          positions[i + 2] = 0;
-
-          // Generate new velocity
-          const phi = Math.random() * Math.PI * 2;
-          const theta = Math.random() * Math.PI;
-          const speed = Math.random() * 2 + 1;
-          
-          vel[i] = Math.sin(theta) * Math.cos(phi) * speed;
-          vel[i + 1] = Math.sin(theta) * Math.sin(phi) * speed;
-          vel[i + 2] = Math.cos(theta) * speed;
-        }
-
-        // Increase velocity
-        vel[i] *= 1.01;
-        vel[i + 1] *= 1.01;
-        vel[i + 2] *= 1.01;
-      }
-
-      // Update material sizes based on transition
-      materials[0].size = 2 + transitionProgress * 4;
-      materials[1].size = 4 + transitionProgress * 8;
-    } else {
-      // Reset when not in hyperspace
-      transitionStartRef.current = null;
-      materials[0].size = 3;
-      materials[1].size = 5;
-    }
-
-    // Mark geometry for update
-    pointsRef.current.geometry.attributes.position.needsUpdate = true;
-    glowPointsRef.current.geometry.attributes.position.needsUpdate = true;
-  });
 
   return (
     <>
