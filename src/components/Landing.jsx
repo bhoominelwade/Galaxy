@@ -33,36 +33,35 @@ function Logo() {
 
 function SocialIcons() {
   return (
-    <div className="flex">
-      <a href="#" className="text-blue-200 gap-12 hover:text-blue-100 transition-colors">
-         <img 
-          src="public\textures\X.jpeg" 
-          alt="Social Icon" 
-          width="30" 
-          height="30"
-          className="hover:opacity-80 transition-opacity"
+    <div className="flex gap-16 justify-end items-center p-2"> 
+      {/* Increased gap to 16 for more spacing */}
+      <a href="#" className="hover:opacity-80 transition-opacity">
+        <img 
+          src="public/textures/TweetX.png" 
+          alt="Twitter Icon" 
+          style={{ width: '35px', height: '35px' }} // Set to 35px for a smaller size
         />
       </a>
-      <a href="#" className="text-indigo-200 gap-12 hover:text-indigo-100 transition-colors">
+      <a href="#" className="hover:opacity-80 transition-opacity">
         <img 
-          src="public\textures\Dexs.jpeg" 
-          alt="Social Icon" 
-         width="30" 
-          height="30"
-          className="hover:opacity-80 transition-opacity"
+          src="public/textures/ndex.png" 
+          alt="Dex Icon" 
+          style={{ width: '60px', height: '60px' }} // Set to 60px for a smaller size
         />
       </a>
-      <a href="#" className="text-purple-200 gap-12hover:text-purple-100 transition-colors">
+      <a href="#" className="hover:opacity-80 transition-opacity">
         <img 
-          src="public\textures\notes.jpeg" 
-          alt="Social Icon" 
-          width="30" 
-          height="30"
-          className="hover:opacity-80 transition-opacity"
+          src="public/textures/notess-removebg-preview.png" 
+          alt="Notes Icon" 
+          style={{ 
+            width: '35px', // Set to 35px for a smaller size
+            height: '35px', 
+            filter: 'brightness(0) invert(1)' 
+          }} 
         />
       </a>
     </div>
-  )
+  );
 }
 
 function CentralContent({ onEmbark }) {

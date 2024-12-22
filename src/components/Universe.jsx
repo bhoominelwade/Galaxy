@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, memo, useMemo, Suspense } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
@@ -11,12 +11,42 @@ import UniverseSpheres from './UniverseSperese.jsx'
 import DynamicStarfield from './DynamicStarfield.jsx';
 import Minimap from './Minimap';
 import CullingManager from './CullingManager'
-import HyperspaceTunnel from './HyperspaceTunnel'
 import UniverseReveal from './UniverseReveal.jsx'
 import AudioManager from './AudioManager'
+import { TrendingUp } from 'lucide-react';
+import TransactionAnalytics from './TransactionAnalytics';
+
+
 
 const WS_URL = 'ws://localhost:3000';
 
+const WebGLContextHandler = () => {
+  const { gl } = useThree();
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const handleContextLost = (event) => {
+      event.preventDefault();
+      console.log('WebGL context lost, attempting to restore...');
+    };
+
+    const handleContextRestored = () => {
+      console.log('WebGL context restored');
+      gl.setSize(gl.domElement.width, gl.domElement.height);
+    };
+
+    canvas.addEventListener('webglcontextlost', handleContextLost, false);
+    canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
+
+    return () => {
+      canvas.removeEventListener('webglcontextlost', handleContextLost);
+      canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+    };
+  }, [gl]);
+
+  return null;
+};
 
 
 const Universe = () => {
@@ -42,10 +72,9 @@ const Universe = () => {
   const [objectLODs, setObjectLODs] = useState(new Map());
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const allTransactionsRef = useRef(new Set());
-  const [hyperspaceActive, setHyperspaceActive] = useState(false);
-  const [targetGalaxyPosition, setTargetGalaxyPosition] = useState([0, 0, 0]);
   const [zoomPhase, setZoomPhase] = useState('none');
-const [universeRevealActive, setUniverseRevealActive] = useState(false);
+  const [universeRevealActive, setUniverseRevealActive] = useState(false);
+  const [statusInfo, setStatusInfo] = useState('');
 
   const galaxyPositionsRef = useRef(new Map());
   const calculateGalaxyPosition = useCallback((index, total) => {
@@ -91,52 +120,51 @@ const [universeRevealActive, setUniverseRevealActive] = useState(false);
       return;
     }
   
-    const galaxyPosition = calculateGalaxyPosition(
-      galaxies.indexOf(galaxy),
-      galaxies.length
-    );
+    setSelectedGalaxy(galaxy);
+    setStatusInfo(`Viewing Galaxy with ${galaxy.transactions.length} planets`);
     
-    const startPosition = mainCameraRef.current.position.clone();
-    const galaxyPos = new THREE.Vector3(...galaxyPosition);
+    const camera = mainCameraRef.current;
+    const controls = controlsRef.current;
+    const startPosition = camera.position.clone();
+    const startTarget = controls.target.clone();
+    const duration = 2000;
+    const startTime = Date.now();
+
+    // Side view position (more to the side and slightly elevated)
+    const finalPosition = new THREE.Vector3(50, 15, 0);
+    const finalTarget = new THREE.Vector3(0, 0, 0);
     
-    setHyperspaceActive(true);
-    setTargetGalaxyPosition(galaxyPosition);
-  
-    // First phase: Hyperspace effect
-    setTimeout(() => {
-      setHyperspaceActive(false);
+    const zoomAnimation = () => {
+      const now = Date.now();
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
       
-      // Second phase: Set selected galaxy and position camera
-      setSelectedGalaxy(galaxy);
+      // Smooth easing function
+      const eased = 1 - Math.pow(1 - progress, 4);
       
-      if (mainCameraRef.current && controlsRef.current) {
-        const duration = 1000;
-        const startTime = Date.now();
-        
-        const animate = () => {
-          const now = Date.now();
-          const elapsed = now - startTime;
-          const progress = Math.min(elapsed / duration, 1);
-          
-          if (progress < 1) {
-            requestAnimationFrame(animate);
-            const eased = 1 - Math.pow(1 - progress, 3);
-            
-            mainCameraRef.current.position.lerp(
-              new THREE.Vector3(0, 25, 50),
-              eased
-            );
-            controlsRef.current.target.lerp(
-              new THREE.Vector3(0, 0, 0),
-              eased
-            );
-            controlsRef.current.update();
-          }
-        };
-        
-        animate();
+      // Calculate spiral path but maintaining side view approach
+      const angle = progress * Math.PI * 1.5; // Reduced rotation for side approach
+      const radius = startPosition.length() * (1 - eased) + 50 * eased;
+      const spiralX = Math.cos(angle) * radius * (1 - eased) + finalPosition.x * eased;
+      const spiralZ = Math.sin(angle) * radius * (1 - eased);
+      const height = startPosition.y * (1 - eased) + finalPosition.y * eased;
+      
+      camera.position.set(
+        spiralX,
+        height,
+        spiralZ
+      );
+      
+      // Smoothly move target
+      controls.target.lerpVectors(startTarget, finalTarget, eased);
+      controls.update();
+      
+      if (progress < 1) {
+        requestAnimationFrame(zoomAnimation);
       }
-    }, 1500); // Match this with your hyperspace effect duration
+    };
+    
+    zoomAnimation();
   }, [galaxies, calculateGalaxyPosition]);
 
   const handleBackToUniverse = useCallback(() => {
@@ -146,39 +174,57 @@ const [universeRevealActive, setUniverseRevealActive] = useState(false);
     }
   
     console.log('Back to Universe clicked');
+    setStatusInfo('');
     
-    if (selectedGalaxy) {
-      const lastPosition = calculateGalaxyPosition(
-        galaxies.indexOf(selectedGalaxy),
-        galaxies.length
-      );
-      setTargetGalaxyPosition(lastPosition);
-    }
+    const camera = mainCameraRef.current;
+    const controls = controlsRef.current;
+    const startPosition = camera.position.clone();
+    const startTarget = controls.target.clone();
+    const duration = 2000;
+    const startTime = Date.now();
+
+    // Final universe view position
+    const finalPosition = new THREE.Vector3(0, 50, 100);
+    const finalTarget = new THREE.Vector3(0, 0, 0);
     
-    setHyperspaceActive(true);
-    
-    setTimeout(() => {
-      setHyperspaceActive(false);
-      setUniverseRevealActive(true);
+    const zoomOutAnimation = () => {
+      const now = Date.now();
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
       
-      setTimeout(() => {
-        setUniverseRevealActive(false);
+      // Smooth easing function
+      const eased = 1 - Math.pow(1 - progress, 4);
+      
+      // Calculate spiral path outward
+      const angle = progress * Math.PI * 1.5; // Matching zoom-in rotation
+      const radius = startPosition.length() * (1 - eased) + finalPosition.length() * eased;
+      const spiralX = Math.cos(angle) * radius;
+      const spiralZ = Math.sin(angle) * radius;
+      const height = startPosition.y * (1 - eased) + finalPosition.y * eased;
+      
+      camera.position.set(
+        spiralX,
+        height,
+        spiralZ
+      );
+      
+      // Smoothly move target
+      controls.target.lerpVectors(startTarget, finalTarget, eased);
+      controls.update();
+      
+      if (progress < 1) {
+        requestAnimationFrame(zoomOutAnimation);
+      } else {
+        // Only reset selection after animation completes
         setSelectedGalaxy(null);
         setSearchResult(null);
-        
-        if (mainCameraRef.current && controlsRef.current) {
-          mainCameraRef.current.position.set(0, 50, 100);
-          controlsRef.current.target.set(0, 0, 0);
-          controlsRef.current.update();
-        }
-      }, 2000);
-    }, 800);
+      }
+    };
+    
+    zoomOutAnimation();
   }, [selectedGalaxy, galaxies, calculateGalaxyPosition]);
 
 // Add useEffect to monitor state changes
-useEffect(() => {
-  console.log('Hyperspace active:', hyperspaceActive);
-}, [hyperspaceActive]);
 
 useEffect(() => {
   console.log('Universe reveal active:', universeRevealActive);
@@ -266,10 +312,14 @@ useEffect(() => {
   }, [galaxies, solitaryPlanets]);
 
   const groupTransactionsIntoGalaxies = useCallback((transactions) => {
-
     if (!transactions || transactions.length === 0) {
       return { galaxies: [], solitaryPlanets: [] };
     }
+
+    const MAX_PLANETS_PER_GALAXY = 40; // Maximum planets per galaxy
+    const TARGET_GALAXY_AMOUNT = 6000; // Keep transaction amount limit
+    const MAX_GALAXY_AMOUNT = 7000; // Keep max amount limit
+
     // First deduplicate transactions based on hash
     const uniqueTransactions = Array.from(
       new Map(transactions.map(tx => [tx.hash, tx])).values()
@@ -279,44 +329,48 @@ useEffect(() => {
     const galaxies = [];
     let currentGalaxy = [];
     let currentSum = 0;
-    const TARGET_GALAXY_AMOUNT = 6000;
-    const MAX_GALAXY_AMOUNT = 7000;
     
     // First separate out the large solo planets (> MAX_GALAXY_AMOUNT)
     const soloTransactions = sortedTransactions.filter(tx => tx.amount > MAX_GALAXY_AMOUNT);
     const galaxyTransactions = sortedTransactions.filter(tx => tx.amount <= MAX_GALAXY_AMOUNT);
     
-    // Process remaining transactions sequentially into galaxies
+    // Process remaining transactions into galaxies with both amount and count limits
     for (const tx of galaxyTransactions) {
-      if (currentSum + tx.amount <= MAX_GALAXY_AMOUNT) {
+      // Check both amount limit and planet count limit
+      if (currentSum + tx.amount <= MAX_GALAXY_AMOUNT && currentGalaxy.length < MAX_PLANETS_PER_GALAXY) {
         currentGalaxy.push(tx);
         currentSum += tx.amount;
       } else {
+        // Create new galaxy if either limit is reached
         if (currentGalaxy.length > 0) {
           galaxies.push({
             transactions: currentGalaxy,
             totalAmount: currentSum
           });
+          console.log(`Created galaxy with ${currentGalaxy.length} planets and ${currentSum} total amount`);
         }
         currentGalaxy = [tx];
         currentSum = tx.amount;
       }
     }
     
+    // Add the last galaxy if it has any transactions
     if (currentGalaxy.length > 0) {
       galaxies.push({
         transactions: currentGalaxy,
         totalAmount: currentSum
       });
+      console.log(`Created final galaxy with ${currentGalaxy.length} planets and ${currentSum} total amount`);
     }
+
+    console.log(`Total galaxies created: ${galaxies.length}`);
+    console.log(`Solitary planets: ${soloTransactions.length}`);
     
     return { galaxies, solitaryPlanets: soloTransactions };
-  }, []);
-
+}, []);
  
 
-  
-  
+
   // Add smart galaxy management
   const handleNewTransaction = useCallback((newTransaction) => {
     // Add to processedTransactions if not already there
@@ -685,19 +739,18 @@ useEffect(() => {
   const handleTransactionHighlight = (txHash) => {
     setSearchResult(txHash);
     
-    // First check in galaxies
     const galaxyWithTx = galaxies.find(g => 
       g.transactions.some(tx => tx.hash === txHash)
     );
     
     if (galaxyWithTx) {
       setSelectedGalaxy(galaxyWithTx);
+      setStatusInfo(`Selected Transaction: ${txHash.slice(0, 8)}... in Galaxy with ${galaxyWithTx.transactions.length} planets`);
     } else {
-      // Check in solitary planets
       const solitaryPlanet = solitaryPlanets.find(tx => tx.hash === txHash);
-      
       if (solitaryPlanet) {
         setSelectedGalaxy(null);
+        setStatusInfo(`Selected Solitary Planet - Amount: ${solitaryPlanet.amount.toFixed(2)}`);
         const planetPosition = calculateGalaxyPosition(
           solitaryPlanets.indexOf(solitaryPlanet) + galaxies.length,
           solitaryPlanets.length + galaxies.length
@@ -774,13 +827,7 @@ useEffect(() => {
       }
     }, [mainCameraRef, controlsRef]);
     
-    useEffect(() => {
-      if (hyperspaceActive) {
-        console.log('Starting hyperspace effect');
-      } else {
-        console.log('Ending hyperspace effect');
-      }
-    }, [hyperspaceActive]);
+  
     
     useEffect(() => {
       if (selectedGalaxy) {
@@ -790,318 +837,419 @@ useEffect(() => {
     }, [selectedGalaxy, galaxies]);
    
 
-  return (
-    <div style={{ width: '100vw', height: '100vh', background: '#000000' }}>
-     <div style={{
-        position: 'absolute',
-        top: '20px',
-        right: '20px',
-        zIndex: 1000,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-end',
-        gap: '10px',
-        maxWidth: '400px'
-      }}>
-        <form onSubmit={handleWalletSearch} style={{
-          display: 'flex',
-          gap: '10px',
-          width: '100%'
+    return (
+      <div style={{ width: '100vw', height: '100vh', background: '#000000' }}>
+        {/* Audio Manager - Top Left */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '20px',
+          zIndex: 1000
         }}>
-          <input
-            type="text"
-            value={walletAddress}
-            onChange={(e) => setWalletAddress(e.target.value)}
-            placeholder="Enter wallet address..."
-            style={{
-              padding: '8px 12px',
+          <AudioManager />
+        </div>
+  
+        {/* Wallet Search Form - Top Right */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: '10px',
+          maxWidth: '400px'
+        }}>
+          <form onSubmit={handleWalletSearch} style={{
+            display: 'flex',
+            gap: '10px',
+            width: '100%'
+          }}>
+            <input
+              type="text"
+              value={walletAddress}
+              onChange={(e) => setWalletAddress(e.target.value)}
+              placeholder="Enter wallet address..."
+              style={{
+                padding: '8px 12px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '4px',
+                color: 'white',
+                outline: 'none',
+                width: '250px',
+                backdropFilter: 'blur(10px)',
+              }}
+            />
+            <button type="submit" style={{
+              padding: '8px 16px',
               background: 'rgba(255, 255, 255, 0.1)',
               border: '1px solid rgba(255, 255, 255, 0.2)',
               borderRadius: '4px',
               color: 'white',
-              outline: 'none',
-              width: '250px',
-              backdropFilter: 'blur(10px)',
-            }}
-          />
-          <button type="submit" style={{
-            padding: '8px 16px',
-            background: 'rgba(255, 255, 255, 0.1)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '4px',
-            color: 'white',
-            cursor: 'pointer',
-          }}>
-            Search
-          </button>
-          {isWalletView && (
-            <button
-              type="button"
-              onClick={clearWalletSearch}
-              style={{
-                padding: '8px',
-                background: 'rgba(255, 77, 77, 0.2)',
-                border: '1px solid rgba(255, 77, 77, 0.3)',
-                borderRadius: '4px',
-                color: 'white',
-                cursor: 'pointer',
-              }}
-            >
-              ✕
+              cursor: 'pointer',
+            }}>
+              Search
             </button>
+            {isWalletView && (
+              <button
+                type="button"
+                onClick={clearWalletSearch}
+                style={{
+                  padding: '8px',
+                  background: 'rgba(255, 77, 77, 0.2)',
+                  border: '1px solid rgba(255, 77, 77, 0.3)',
+                  borderRadius: '4px',
+                  color: 'white',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </form>
+  
+          {walletSearchError && (
+            <div style={{
+              color: '#ff6b6b',
+              background: 'rgba(0, 0, 0, 0.7)',
+              padding: '8px',
+              borderRadius: '4px',
+            }}>
+              {walletSearchError}
+            </div>
           )}
-        </form>
-
-        {walletSearchError && (
-          <div style={{
-            color: '#ff6b6b',
-            background: 'rgba(0, 0, 0, 0.7)',
-            padding: '8px',
-            borderRadius: '4px',
-          }}>
-            {walletSearchError}
-          </div>
-        )}
-
-{isWalletView && userTransactions.length > 0 && (
-  <div style={{
-    background: 'rgba(0, 0, 0, 0.8)',
-    padding: '10px',
-    borderRadius: '4px',
-    width: '100%',
-    maxHeight: '300px', // Reduced from 400px
-    backdropFilter: 'blur(10px)',
-    display: 'flex',
-    flexDirection: 'column',
-    fontSize: '13px' // Added smaller base font size
-  }}>
-    <div style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '6px', // Reduced from 8px
-      color: 'white',
-      padding: '0 6px', // Reduced padding
-      fontSize: '12px' // Slightly larger than table text
-    }}>
-      <span>Wallet: {walletAddress.slice(0, 8)}...</span>
-      <span>{userTransactions.length} transactions</span>
-    </div>
-    
-    <div style={{
-      overflowY: 'auto',
-      maxHeight: '250px', // Reduced from 350px
-      scrollbarWidth: 'thin',
-      scrollbarColor: 'rgba(255,255,255,0.3) transparent'
-    }}>
-      <table style={{
-        width: '100%',
-        borderCollapse: 'collapse',
-        color: 'white',
-      }}>
-        <thead style={{
-          position: 'sticky',
-          top: 0,
-          background: 'rgba(0, 0, 0, 0.9)',
-          zIndex: 1,
-          fontSize: '10px' // Smaller header text
+  
+          {isWalletView && userTransactions.length > 0 && (
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.8)',
+              padding: '10px',
+              borderRadius: '4px',
+              width: '100%',
+              maxHeight: '300px',
+              backdropFilter: 'blur(10px)',
+              display: 'flex',
+              flexDirection: 'column',
+              fontSize: '13px'
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '6px',
+                color: 'white',
+                padding: '0 6px',
+                fontSize: '12px'
+              }}>
+                <span>Wallet: {walletAddress.slice(0, 8)}...</span>
+                <span>{userTransactions.length} transactions</span>
+              </div>
+              
+              <div style={{
+                overflowY: 'auto',
+                maxHeight: '250px',
+                scrollbarWidth: 'thin',
+                scrollbarColor: 'rgba(255,255,255,0.3) transparent'
+              }}>
+                <table style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  color: 'white',
+                }}>
+                  <thead style={{
+                    position: 'sticky',
+                    top: 0,
+                    background: 'rgba(0, 0, 0, 0.9)',
+                    zIndex: 1,
+                    fontSize: '10px'
+                  }}>
+                    <tr>
+                      <th style={{padding: '6px', textAlign: 'left'}}>Transaction ID</th>
+                      <th style={{padding: '6px', textAlign: 'right'}}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userTransactions.map(tx => (
+                      <tr 
+                        key={tx.hash} 
+                        style={{
+                          borderTop: '1px solid rgba(255,255,255,0.1)',
+                          cursor: 'pointer',
+                          transition: 'background 0.2s'
+                        }}
+                        onClick={() => handleTransactionHighlight(tx.hash)}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <td style={{padding: '4px 6px'}}>{tx.hash.slice(0,10)}...</td>
+                        <td style={{padding: '4px 6px', textAlign: 'right'}}>{tx.amount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+  
+        {/* Nova Analytics */}
+        <div style={{
+          position: 'absolute',
+          bottom: '7rem',
+          left: '1rem',
+          zIndex: 10,
+          color: 'white',
+          background: 'rgba(0, 0, 0, 0.7)',
+          padding: '1rem',
+          borderRadius: '0.5rem',
+          fontFamily: 'monospace',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          minWidth: '300px'
         }}>
-          <tr>
-            <th style={{padding: '6px', textAlign: 'left'}}>Transaction ID</th>
-            <th style={{padding: '6px', textAlign: 'right'}}>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {userTransactions.map(tx => (
-            <tr 
-              key={tx.hash} 
-              style={{
-                borderTop: '1px solid rgba(255,255,255,0.1)',
-                cursor: 'pointer',
-                transition: 'background 0.2s'
-              }}
-              onClick={() => handleTransactionHighlight(tx.hash)}
-              onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-              onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <td style={{padding: '4px 6px'}}>{tx.hash.slice(0,10)}...</td>
-              <td style={{padding: '4px 6px', textAlign: 'right'}}>{tx.amount.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
-      </div>
-<AudioManager hyperspaceActive={hyperspaceActive} />
-      <Canvas 
-  camera={{ 
-    position: [0, 50, 100], 
-    fov: 65,
-    far: 2000,
-    near: 0.1,
-    up: [0, 1, 0]
-  }} 
-  onCreated={({ camera }) => {
-    mainCameraRef.current = camera;
-   
-  }}
->
-  {/* Hyperspace effect */}
-   {hyperspaceActive && (
-    <HyperspaceTunnel 
-      active={true}
-      galaxyPosition={targetGalaxyPosition}
-    />
-  )}
-
-  {/* Universe reveal effect */}
-  {universeRevealActive && (
-    <UniverseReveal active={true} />
-  )}
-
-  {/* Only render scene elements when not in transition */}
-  {!hyperspaceActive && !universeRevealActive && (
-    <>
-      <ambientLight intensity={0.4} />
-      <pointLight position={[10, 10, 10]} intensity={1.2} />
-      <UniverseSpheres 
-        selectedGalaxy={selectedGalaxy}
-        hyperspaceActive={hyperspaceActive}
-        zoomPhase={zoomPhase}
-      />
-      <DynamicStarfield hyperspaceActive={hyperspaceActive} />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginBottom: '0.75rem',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            paddingBottom: '0.5rem'
+          }}>
+            <TrendingUp size={20} />
+            <span style={{ fontWeight: 'bold' }}>NOVA Analytics</span>
+          </div>
+  
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {[...galaxies.flatMap(g => g.transactions), ...solitaryPlanets]
+              .sort((a, b) => b.amount - a.amount)
+              .slice(0, 3)
+              .map((tx, index) => (
+                <div key={tx.hash} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '0.5rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onClick={() => handleTransactionHighlight(tx.hash)}
+                onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.1)'}
+                onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.05)'}
+                >
+                  <span style={{ opacity: 0.8 }}>{tx.hash.slice(0, 8)}...</span>
+                  <span style={{ color: '#4ade80' }}>{tx.amount.toFixed(2)}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+  
+        {/* Main Canvas */}
+        <Canvas 
+          camera={{ 
+            position: [0, 50, 100], 
+            fov: 65,
+            far: 2000,
+            near: 0.1,
+            up: [0, 1, 0]
+          }} 
+          onCreated={({ gl, camera }) => {
+            mainCameraRef.current = camera;
             
-            <CullingManager
-              galaxies={galaxies}
-              solitaryPlanets={solitaryPlanets}
-              selectedGalaxy={selectedGalaxy}
-              searchResult={searchResult}
-              calculateGalaxyPosition={calculateGalaxyPosition}
-              onSetVisible={handleSetVisible}
-            />
-
-            {selectedGalaxy ? (
-        <SpiralGalaxy 
-          transactions={selectedGalaxy.transactions}
-          position={[0, 0, 0]}
-          isSelected={true}
-          colorIndex={galaxies.findIndex(g => g === selectedGalaxy)}
-          highlightedHash={searchResult}
-          lodLevel={objectLODs.get(`galaxy-${galaxies.findIndex(g => g === selectedGalaxy)}`) || 'HIGH'}
-        />
-            ) : (
+            gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            gl.shadowMap.enabled = true;
+            gl.shadowMap.type = THREE.PCFSoftShadowMap;
+            gl.powerPreference = 'high-performance';
+            gl.preserveDrawingBuffer = true;
+          }}
+          fallback={
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              color: 'white',
+              background: 'rgba(0,0,0,0.8)',
+              padding: '20px',
+              borderRadius: '10px'
+            }}>
+              Loading 3D Scene...
+            </div>
+          }
+        >
+          <Suspense fallback={null}>
+            <WebGLContextHandler />
+  
+            {universeRevealActive && (
+              <UniverseReveal active={true} />
+            )}
+  
+            {!universeRevealActive && (
               <>
-                {galaxies.map((galaxy, index) => (
-                  visibleObjects.has(`galaxy-${index}`) && (
-                    <SpiralGalaxy
-                      key={index}
-                      transactions={galaxy.transactions}
-                      position={calculateGalaxyPosition(index, galaxies.length)}
-                      onClick={() => handleGalaxyClick(galaxy)}
-                      isSelected={false}
-                      colorIndex={index}
-                      lodLevel={objectLODs.get(`galaxy-${index}`) || 'HIGH'}
-                    />
-                  )
-                ))}
-
-                {solitaryPlanets.map((tx, index) => (
-                  visibleObjects.has(`planet-${index}`) && (
-                    <Planet
-                      key={tx.hash}
-                      transaction={tx}
-                      position={calculateGalaxyPosition(
-                        index + galaxies.length,
-                        solitaryPlanets.length + galaxies.length
-                      )}
-                      baseSize={1.5}
-                      colorIndex={index}
-                      isHighlighted={tx.hash === searchResult}
-                      lodLevel={objectLODs.get(`planet-${index}`) || 'HIGH'}
-                    />
-                  )
-                ))}
+                <ambientLight intensity={0.4} />
+                <pointLight position={[10, 10, 10]} intensity={1.2} />
+                <UniverseSpheres 
+                  selectedGalaxy={selectedGalaxy}
+                  zoomPhase={zoomPhase}
+                />
+                <DynamicStarfield />
+                
+                <CullingManager
+                  galaxies={galaxies}
+                  solitaryPlanets={solitaryPlanets}
+                  selectedGalaxy={selectedGalaxy}
+                  searchResult={searchResult}
+                  calculateGalaxyPosition={calculateGalaxyPosition}
+                  onSetVisible={handleSetVisible}
+                />
+  
+                {selectedGalaxy ? (
+                  <SpiralGalaxy 
+                    transactions={selectedGalaxy.transactions}
+                    position={[0, 0, 0]}
+                    isSelected={true}
+                    colorIndex={galaxies.findIndex(g => g === selectedGalaxy)}
+                    highlightedHash={searchResult}
+                    lodLevel={objectLODs.get(`galaxy-${galaxies.findIndex(g => g === selectedGalaxy)}`) || 'HIGH'}
+                  />
+                ) : (
+                  <>
+                    {galaxies.map((galaxy, index) => (
+                      visibleObjects.has(`galaxy-${index}`) && (
+                        <SpiralGalaxy
+                          key={index}
+                          transactions={galaxy.transactions}
+                          position={calculateGalaxyPosition(index, galaxies.length)}
+                          onClick={() => handleGalaxyClick(galaxy)}
+                          isSelected={false}
+                          colorIndex={index}
+                          lodLevel={objectLODs.get(`galaxy-${index}`) || 'HIGH'}
+                        />
+                      )
+                    ))}
+  
+                    {solitaryPlanets.map((tx, index) => (
+                      visibleObjects.has(`planet-${index}`) && (
+                        <Planet
+                          key={tx.hash}
+                          transaction={tx}
+                          position={calculateGalaxyPosition(
+                            index + galaxies.length,
+                            solitaryPlanets.length + galaxies.length
+                          )}
+                          baseSize={2}
+                          colorIndex={index}
+                          isHighlighted={tx.hash === searchResult}
+                          lodLevel={objectLODs.get(`planet-${index}`) || 'HIGH'}
+                        />
+                      )
+                    ))}
+                  </>
+                )}
+                
+                <OrbitControls 
+                  ref={controlsRef}
+                  enableZoom={true}
+                  maxDistance={selectedGalaxy ? 40 : 1000}
+                  minDistance={5}
+                  autoRotate={!selectedGalaxy}
+                  autoRotateSpeed={0.3}
+                  maxPolarAngle={Math.PI}
+                  minPolarAngle={0}
+                  zoomSpeed={1}
+                  rotateSpeed={0.5}
+                  panSpeed={5}
+                  enableDamping={true}
+                  dampingFactor={0.1}
+                  mouseButtons={{
+                    LEFT: THREE.MOUSE.ROTATE,
+                    MIDDLE: THREE.MOUSE.DOLLY,
+                    RIGHT: THREE.MOUSE.PAN
+                  }}
+                  screenSpacePanning={true}
+                  enablePan={true}
+                  keyPanSpeed={25}
+                />
               </>
             )}
-
-            <OrbitControls 
-  ref={controlsRef}
-  enableZoom={!hyperspaceActive}
-  maxDistance={selectedGalaxy ? 40 : 1000}
-  minDistance={5}
-  autoRotate={!selectedGalaxy && !hyperspaceActive}
-  autoRotateSpeed={0.3}
-  maxPolarAngle={Math.PI}
-  minPolarAngle={0}
-  zoomSpeed={1}
-  rotateSpeed={0.5}
-  panSpeed={5}
-  enableDamping={true}
-  dampingFactor={0.1}
-  mouseButtons={{
-    LEFT: THREE.MOUSE.ROTATE,
-    MIDDLE: THREE.MOUSE.DOLLY,
-    RIGHT: THREE.MOUSE.PAN
-  }}
-  screenSpacePanning={true}
-  enablePan={!hyperspaceActive}
-  keyPanSpeed={25}
-/>
-          </>
-        )}
-      </Canvas>
-      <Minimap 
-        mainCamera={mainCameraRef.current}
-        galaxyPositions={galaxyPositions}
-        onNavigate={handleMinimapNavigate}
-        selectedGalaxy={selectedGalaxy ? galaxies.indexOf(selectedGalaxy) : null}
-      />
-
-      <div style={{ 
-        position: 'absolute', 
-        bottom: '1rem', 
-        left: '1rem', 
-        zIndex: 10, 
-        display: 'flex', 
-        gap: '1rem',
-        color: 'white',
-        background: 'rgba(0,0,0,0.5)',
-        padding: '1rem',
-        borderRadius: '0.5rem',
-        fontFamily: 'monospace'
-      }}>
-        <div>Galaxies: {galaxies.length}</div>
-        <div>|</div>
-        <div>Solitary Planets: {solitaryPlanets.length}</div>
-        <div>|</div>
-        <div>Total Transactions: {
-          galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
-          solitaryPlanets.length
-        }</div>
-      </div>
-
-      {selectedGalaxy && (
-        <button
-        style={{
-          position: 'absolute',
-          top: '20px',
-          left: '220px',
-          padding: '10px 20px',
-          background: 'rgba(255,255,255,0.1)',
+          </Suspense>
+        </Canvas>
+  
+        {/* Status Info */}
+        <div style={{ 
+          position: 'absolute', 
+          bottom: '5rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 10,
           color: 'white',
-          border: '1px solid rgba(255,255,255,0.2)',
-          borderRadius: '5px',
-          cursor: 'pointer',
-          backdropFilter: 'blur(10px)',
-          transition: 'all 0.3s ease',
-        }}
-        onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
-        onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-        onClick={handleBackToUniverse}  // Fixed: Direct reference to the function
-      >
-        Back to Universe
+          background: 'rgba(0,0,0,0.7)',
+          padding: '0.75rem 1.5rem',
+          borderRadius: '0.5rem',
+          fontFamily: 'monospace',
+          fontSize: '1.1rem',
+          maxWidth: '80%',
+          textAlign: 'center',
+          opacity: statusInfo ? 1 : 0,
+          transition: 'opacity 0.3s ease'
+        }}>
+          {statusInfo}
+        </div>
+  
+        {/* Minimap */}
+        <Minimap 
+          mainCamera={mainCameraRef.current}
+          galaxyPositions={galaxyPositions}
+          onNavigate={handleMinimapNavigate}
+          selectedGalaxy={selectedGalaxy ? galaxies.indexOf(selectedGalaxy) : null}
+        />
+  
+        {/* Stats */}
+        <div style={{ 
+          position: 'absolute', 
+          bottom: '1rem', 
+          left: '1rem', 
+          zIndex: 10, 
+          display: 'flex', 
+          gap: '1rem',
+          color: 'white',
+          background: 'rgba(0,0,0,0.5)',
+          padding: '1rem',
+          borderRadius: '0.5rem',
+          fontFamily: 'monospace'
+        }}>
+          <div>Galaxies: {galaxies.length}</div>
+          <div>|</div>
+          <div>Solitary Planets: {solitaryPlanets.length}</div>
+          <div>|</div>
+          <div>Total Transactions: {
+            galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
+            solitaryPlanets.length
+          }</div>
+        </div>
+  
+        {/* Back to Universe Button */}
+        {selectedGalaxy && (
+          <button
+            style={{
+              position: 'absolute',
+              top: '20px',
+              left: '220px',
+              padding: '10px 20px',
+              background: 'rgba(255,255,255,0.1)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              backdropFilter: 'blur(10px)',
+              transition: 'all 0.3s ease',
+            }}
+            onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+            onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+            onClick={handleBackToUniverse}
+          >
+            Back to Universe
       </button>
       )}
       {loading && (
@@ -1121,6 +1269,7 @@ useEffect(() => {
       solitaryPlanets.length
     }
   </div>
+  
 )}
     </div>
   );

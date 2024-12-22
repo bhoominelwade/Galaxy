@@ -4,51 +4,99 @@ const AudioManager = ({ hyperspaceActive }) => {
   const backgroundMusicRef = useRef(null);
   const hyperspaceSoundRef = useRef(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
-  // Initialize and start background music immediately on component mount
+  // Initialize audio on component mount
   useEffect(() => {
-    try {
-      // Initialize background music
-      backgroundMusicRef.current = new Audio('public/audio/background.mp3');
-      backgroundMusicRef.current.loop = true;
-      backgroundMusicRef.current.volume = 1;
-      
-      // Initialize hyperspace sound
-      hyperspaceSoundRef.current = new Audio('public/audio/hyperspace.mp3');
-      hyperspaceSoundRef.current.volume = 1;
-      
-      // Start background music immediately
-      const playBackgroundMusic = async () => {
-        try {
-          await backgroundMusicRef.current.play();
-        } catch (err) {
-          console.error('Background music autoplay failed:', err);
+    // Initialize background music
+    backgroundMusicRef.current = new Audio();
+    backgroundMusicRef.current.src = '/audio/background.mp3';
+    backgroundMusicRef.current.loop = true;
+    backgroundMusicRef.current.volume = 0.8;
+    backgroundMusicRef.current.preload = 'auto';
+    
+    // Initialize hyperspace sound
+    hyperspaceSoundRef.current = new Audio();
+    hyperspaceSoundRef.current.src = '/audio/hyperspace.mp3';
+    hyperspaceSoundRef.current.volume = 0.9;
+    hyperspaceSoundRef.current.preload = 'auto';
+
+    // Add loading event listeners
+    const handleBackgroundLoaded = () => {
+      console.log('Background music loaded');
+    };
+
+    const handleHyperspaceLoaded = () => {
+      console.log('Hyperspace sound loaded');
+    };
+
+    backgroundMusicRef.current.addEventListener('canplaythrough', handleBackgroundLoaded);
+    hyperspaceSoundRef.current.addEventListener('canplaythrough', handleHyperspaceLoaded);
+
+    return () => {
+      if (backgroundMusicRef.current) {
+        backgroundMusicRef.current.removeEventListener('canplaythrough', handleBackgroundLoaded);
+      }
+      if (hyperspaceSoundRef.current) {
+        hyperspaceSoundRef.current.removeEventListener('canplaythrough', handleHyperspaceLoaded);
+      }
+    };
+  }, []);
+
+  // Handle user interaction to start audio
+  useEffect(() => {
+    const handleUserInteraction = async () => {
+      try {
+        if (!isReady && backgroundMusicRef.current) {
+          const playPromise = backgroundMusicRef.current.play();
+          if (playPromise !== undefined) {
+            await playPromise;
+            setIsReady(true);
+            console.log('Audio playback started successfully');
+          }
         }
-      };
-      playBackgroundMusic();
-    } catch (err) {
-      console.error('Audio initialization error:', err);
-    }
-  }, []); // Empty dependency array ensures this runs once on mount
+      } catch (error) {
+        console.log('Playback failed:', error);
+      }
+    };
 
-  // Handle hyperspace sound effect - only play during transition
+    const interactions = ['click', 'touchstart', 'keydown'];
+    interactions.forEach(event => 
+      document.addEventListener(event, handleUserInteraction, { once: true })
+    );
+
+    return () => {
+      interactions.forEach(event => 
+        document.removeEventListener(event, handleUserInteraction)
+      );
+    };
+  }, [isReady]);
+
+  // Handle hyperspace sound effect
   useEffect(() => {
-    if (!hyperspaceSoundRef.current || isMuted) return;
+    if (!hyperspaceSoundRef.current || !isReady || isMuted) return;
 
-    if (hyperspaceActive) {
-      // Play hyperspace sound when animation starts
-      hyperspaceSoundRef.current.currentTime = 0;
-      hyperspaceSoundRef.current.play().catch(err => {
-        console.error('Hyperspace sound playback failed:', err);
-      });
-    } else {
-      // Stop hyperspace sound when animation ends
-      hyperspaceSoundRef.current.pause();
-      hyperspaceSoundRef.current.currentTime = 0;
-    }
-  }, [hyperspaceActive, isMuted]);
+    const handleHyperspace = async () => {
+      try {
+        if (hyperspaceActive) {
+          hyperspaceSoundRef.current.currentTime = 0;
+          const playPromise = hyperspaceSoundRef.current.play();
+          if (playPromise !== undefined) {
+            await playPromise;
+          }
+        } else {
+          hyperspaceSoundRef.current.pause();
+          hyperspaceSoundRef.current.currentTime = 0;
+        }
+      } catch (error) {
+        console.error('Hyperspace sound playback error:', error);
+      }
+    };
 
-  // Handle muting for all sounds
+    handleHyperspace();
+  }, [hyperspaceActive, isReady, isMuted]);
+
+  // Handle muting
   useEffect(() => {
     if (backgroundMusicRef.current) {
       backgroundMusicRef.current.volume = isMuted ? 0 : 0.8;
@@ -82,9 +130,8 @@ const AudioManager = ({ hyperspaceActive }) => {
       <button
         onClick={() => setIsMuted(!isMuted)}
         style={{
-          background: 'rgba(0, 0, 0, 0.7)',
-          border: '1px solid rgba(255, 255, 255, 0.3)',
-          borderRadius: '4px',
+          background: 'transparent',
+          border: 'none',
           padding: '10px',
           width: '44px',
           height: '44px',
@@ -94,10 +141,11 @@ const AudioManager = ({ hyperspaceActive }) => {
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: '20px',
-          transition: 'background-color 0.3s'
+          transition: 'transform 0.3s'
         }}
-        onMouseOver={(e) => e.target.style.background = 'rgba(0, 0, 0, 0.9)'}
-        onMouseOut={(e) => e.target.style.background = 'rgba(0, 0, 0, 0.7)'}
+        onMouseOver={(e) => e.target.style.transform = 'scale(1.1)'}
+        onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+        aria-label={isMuted ? 'Unmute' : 'Mute'}
       >
         {isMuted ? '🔇' : '🔊'}
       </button>

@@ -10,9 +10,10 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
   
   const [geometry, materials, velocities] = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
-    // Dramatically increased number of stars (10x more)
     const positions = new Float32Array(900000 * 3);
     const velocities = new Float32Array(600000 * 3);
+    // Define colors array that was missing
+    const colors = new Float32Array(900000 * 3);
     
     // Enhanced color distribution for denser starfield
     const starColors = [
@@ -27,14 +28,15 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
     const totalWeight = starColors.reduce((sum, type) => sum + type.weight, 0);
     const colorProbabilities = starColors.map(type => type.weight / totalWeight);
 
-    // Optimized space range for higher density
-    const spaceRange = 5000; // Decreased for denser appearance
+    const spaceRange = 5000;
 
     for (let i = 0; i < positions.length; i += 3) {
+      // Position calculation
       positions[i] = (Math.random() - 0.5) * spaceRange;
       positions[i + 1] = (Math.random() - 0.5) * spaceRange;
       positions[i + 2] = (Math.random() - 0.5) * spaceRange;
 
+      // Velocity calculation
       const phi = Math.random() * Math.PI * 2;
       const theta = Math.random() * Math.PI;
       const speed = Math.random() * 2 + 1;
@@ -47,6 +49,7 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
       const rand = Math.random();
       let cumulative = 0;
       let selectedColor = starColors[0].color;
+      
       for (let j = 0; j < colorProbabilities.length; j++) {
         cumulative += colorProbabilities[j];
         if (rand <= cumulative) {
@@ -63,12 +66,13 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-    // Enhanced star texture
+    // Create star texture
     const canvas = document.createElement('canvas');
     canvas.width = 150;
     canvas.height = 150;
     const ctx = canvas.getContext('2d');
 
+    // Helper function for drawing spikes
     const drawSpike = (ctx, x, y, length, width, intensity, angle = 0) => {
       ctx.save();
       ctx.translate(x, y);
@@ -93,8 +97,10 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
       ctx.restore();
     };
 
-    ctx.clearRect(0, 0, 128, 128);
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
+    // Helper function for drawing glow
     const drawGlow = (radius, alpha) => {
       const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, radius);
       gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
@@ -104,27 +110,31 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
       gradient.addColorStop(1, 'rgba(150, 180, 255, 0)');
       
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 128, 128);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
     };
 
+    // Draw multiple glow layers
     drawGlow(64, 0.2);
     drawGlow(48, 0.3);
     drawGlow(32, 0.4);
     drawGlow(24, 0.5);
 
-    const center = 64;
+    const center = canvas.width / 2;
     
+    // Draw main spikes
     for (let i = 0; i < 4; i++) {
       const angle = (i * Math.PI) / 2;
       drawSpike(ctx, center, center, 60, 2, 1.0, angle);
       drawSpike(ctx, center, center, 58, 1.5, 0.7, angle + 0.02);
     }
 
+    // Draw secondary spikes
     for (let i = 0; i < 4; i++) {
       const angle = (i * Math.PI) / 2 + Math.PI / 4;
       drawSpike(ctx, center, center, 45, 1, 0.5, angle);
     }
 
+    // Draw star core
     const coreGradient = ctx.createRadialGradient(center, center, 0, center, center, 8);
     coreGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
     coreGradient.addColorStop(0.3, 'rgba(240, 248, 255, 0.8)');
@@ -137,10 +147,11 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
     ctx.arc(center, center, 8, 0, Math.PI * 2);
     ctx.fill();
 
+    // Create texture from canvas
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
 
-    // Adjusted materials for better visibility with more stars
+    // Create materials
     const coreMaterial = new THREE.PointsMaterial({
       size: 2.5,
       map: texture,
@@ -185,10 +196,12 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
       for (let i = 0; i < positions.length; i += 3) {
         const vel = velocitiesRef.current;
         
+        // Update positions
         positions[i] += vel[i] * baseSpeed;
         positions[i + 1] += vel[i + 1] * baseSpeed;
         positions[i + 2] += vel[i + 2] * baseSpeed;
 
+        // Check if star needs to be reset
         const distance = Math.sqrt(
           positions[i] * positions[i] + 
           positions[i + 1] * positions[i + 1] + 
@@ -196,10 +209,12 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
         );
 
         if (distance > 3000) {
+          // Reset position
           positions[i] = 0;
           positions[i + 1] = 0;
           positions[i + 2] = 0;
 
+          // Generate new velocity
           const phi = Math.random() * Math.PI * 2;
           const theta = Math.random() * Math.PI;
           const speed = Math.random() * 2 + 1;
@@ -209,19 +224,23 @@ const DynamicStarfield = memo(({ hyperspaceActive }) => {
           vel[i + 2] = Math.cos(theta) * speed;
         }
 
+        // Increase velocity
         vel[i] *= 1.01;
         vel[i + 1] *= 1.01;
         vel[i + 2] *= 1.01;
       }
 
+      // Update material sizes based on transition
       materials[0].size = 2 + transitionProgress * 4;
       materials[1].size = 4 + transitionProgress * 8;
     } else {
+      // Reset when not in hyperspace
       transitionStartRef.current = null;
       materials[0].size = 3;
       materials[1].size = 5;
     }
 
+    // Mark geometry for update
     pointsRef.current.geometry.attributes.position.needsUpdate = true;
     glowPointsRef.current.geometry.attributes.position.needsUpdate = true;
   });
