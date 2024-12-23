@@ -99,7 +99,7 @@ const Universe = () => {
     }
   
     setSelectedGalaxy(galaxy);
-    setStatusInfo(`Viewing Galaxy with ${galaxy.transactions.length} planets`);
+    //setStatusInfo(`Viewing Galaxy with ${galaxy.transactions.length} planets`);
     
     const camera = mainCameraRef.current;
     const controls = controlsRef.current;
@@ -798,11 +798,18 @@ useEffect(() => {
       calculateGalaxyPosition={calculateGalaxyPosition}
     />
   
-        <TransactionAnalytics 
-  galaxies={galaxies}
-  solitaryPlanets={solitaryPlanets}
-  onTransactionHighlight={handleTransactionHighlight}
-/>
+  <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 400,
+          zIndex: 10
+        }}>
+          <TransactionAnalytics 
+            galaxies={galaxies}
+            solitaryPlanets={solitaryPlanets}
+            onTransactionHighlight={handleTransactionHighlight}
+          />
+        </div>
   
         {/* Main Canvas */}
         <Canvas 
@@ -957,14 +964,16 @@ useEffect(() => {
         </div>
   
         {/* Minimap */}
-        <MapNavigation 
-  mainCamera={mainCameraRef.current}
-  controlsRef={controlsRef}
-  galaxyPositions={galaxyPositions}
-  onNavigate={() => {}}
-  selectedGalaxy={selectedGalaxy ? galaxies.indexOf(selectedGalaxy) : null}
-  onExpandChange={setIsMapExpanded} 
-/>
+        {!selectedGalaxy && (
+  <MapNavigation 
+    mainCamera={mainCameraRef.current}
+    controlsRef={controlsRef}
+    galaxyPositions={galaxyPositions}
+    onNavigate={() => {}}
+    selectedGalaxy={null}
+    onExpandChange={setIsMapExpanded} 
+  />
+)}
   
         {/* Stats */}
         {/* <div style={{ 
@@ -996,7 +1005,7 @@ useEffect(() => {
         style={{
       position: 'absolute',
       top: '20px',
-      left: '100px',
+      left: '20px',
       padding: '10px',
       background: 'rgba(0, 0, 0, 0.3)',
       color: 'white',

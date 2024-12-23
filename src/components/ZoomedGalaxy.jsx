@@ -15,9 +15,6 @@ const BASE_ORBIT_RANGES = [
   { minRadius: 49, maxRadius: 56, tilt: 2.5 }
 ];
 
-const CORE_COLOR = new THREE.Color('#FDB813');
-const GLOW_COLOR = new THREE.Color('#FFE5B4');
-
 const generateOrbitPath = (baseRadius, tilt, segments = 128, seed = 0) => {
   const points = [];
   const random = (x) => Math.sin(seed * 1000 + x * 100) * 0.5 + 0.5;
@@ -105,21 +102,13 @@ const ZoomedGalaxy = ({
       return [];
     }
 
-    const MIN_SEPARATION = 3;
     const positions = [];
-    const occupiedSpaces = new Set();
-    const visibleCount = Math.min(transactions.length, 30);
     
-    const topTransactions = [...transactions]
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, visibleCount)
-      .filter(tx => tx?.amount > 0);
-    
-    for (let i = 0; i < topTransactions.length; i++) {
-      const tx = topTransactions[i];
+    for (let i = 0; i < transactions.length; i++) {
+      const tx = transactions[i];
       if (!tx) continue;
       
-      const orbitIndex = Math.floor(i / (topTransactions.length / orbitRanges.length));
+      const orbitIndex = Math.floor(i / (transactions.length / orbitRanges.length));
       const orbit = orbitRanges[orbitIndex % orbitRanges.length];
       
       if (!orbit || !orbit.points) {
@@ -128,23 +117,15 @@ const ZoomedGalaxy = ({
 
       const hashValue = tx.hash ? parseInt(tx.hash.slice(-4), 16) : 0;
       const randomOffset = (hashValue % 100) / 1000;
-      const progress = ((i / topTransactions.length) + randomOffset) % 1;
+      const progress = ((i / transactions.length) + randomOffset) % 1;
       
       try {
         const position = getPositionOnOrbit(orbit.points, progress);
-        
-        const gridX = Math.round(position.x / MIN_SEPARATION);
-        const gridZ = Math.round(position.z / MIN_SEPARATION);
-        const spaceKey = `${gridX},${gridZ}`;
-        
-        if (!occupiedSpaces.has(spaceKey)) {
-          occupiedSpaces.add(spaceKey);
-          positions.push({
-            transaction: tx,
-            position: [position.x, position.y, position.z],
-            orbitIndex
-          });
-        }
+        positions.push({
+          transaction: tx,
+          position: [position.x, position.y, position.z],
+          orbitIndex
+        });
       } catch (error) {
         console.error('Error positioning planet:', error);
       }
@@ -189,13 +170,13 @@ const ZoomedGalaxy = ({
       <group>
         <mesh ref={coreRef}>
           <icosahedronGeometry args={[2, 15]} />
-          <meshBasicMaterial
-            color={CORE_COLOR}
-            transparent
-            opacity={1.0}
+          <meshStandardMaterial
+            color={colorScheme?.core}
+            emissive={colorScheme?.core}
+            emissiveIntensity={0.5}
           />
           <pointLight 
-            color={CORE_COLOR} 
+            color={colorScheme?.core}
             intensity={3.0}
             distance={50}
             decay={2}
@@ -204,8 +185,8 @@ const ZoomedGalaxy = ({
 
         <mesh ref={glowRef} scale={[1.2, 1.2, 1.2]}>
           <sphereGeometry args={[2, 32, 32]} />
-          <meshBasicMaterial
-            color={GLOW_COLOR}
+          <meshStandardMaterial
+            color={colorScheme?.core}
             transparent
             opacity={0.3}
             blending={THREE.AdditiveBlending}

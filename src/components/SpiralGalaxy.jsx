@@ -99,7 +99,12 @@ const SpiralGalaxy = ({
   };
 
   return (
-    <group ref={groupRef} position={position} onClick={onClick}>
+    <group 
+    ref={groupRef} 
+    position={position} 
+    onClick={!isSelected ? onClick : undefined}
+    style={{ cursor: !isSelected ? 'pointer' : 'default' }}
+    >
       {/* Core */}
       <mesh>
         <sphereGeometry args={[isSelected ? 2 : 0.8, 32, 32]} />

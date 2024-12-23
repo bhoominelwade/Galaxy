@@ -3,140 +3,69 @@ import React, { useEffect, useRef, useState } from 'react';
 const AudioManager = ({ hyperspaceActive, isMapExpanded, selectedGalaxy, onBackToUniverse }) => {
   const backgroundMusicRef = useRef(null);
   const hyperspaceSoundRef = useRef(null);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true); // Start muted
   const [isReady, setIsReady] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
 
-  // Initialize audio on component mount
   useEffect(() => {
-    // Initialize background music
-    backgroundMusicRef.current = new Audio();
-    backgroundMusicRef.current.src = '/audio/background.mp3';
+    backgroundMusicRef.current = new Audio('/audio/background.mp3');
     backgroundMusicRef.current.loop = true;
-    backgroundMusicRef.current.volume = 0.8;
-    backgroundMusicRef.current.preload = 'auto';
+    backgroundMusicRef.current.volume = 0;  // Start with volume 0
     
-    // Initialize hyperspace sound
-    hyperspaceSoundRef.current = new Audio();
-    hyperspaceSoundRef.current.src = '/audio/hyperspace.mp3';
-    hyperspaceSoundRef.current.volume = 0.9;
-    hyperspaceSoundRef.current.preload = 'auto';
+    hyperspaceSoundRef.current = new Audio('/audio/hyperspace.mp3');
+    hyperspaceSoundRef.current.volume = 0;  // Start with volume 0
 
-    const handleBackgroundLoaded = () => {
-      console.log('Background music loaded');
-    };
-
-    const handleHyperspaceLoaded = () => {
-      console.log('Hyperspace sound loaded');
-    };
-
-    backgroundMusicRef.current.addEventListener('canplaythrough', handleBackgroundLoaded);
-    hyperspaceSoundRef.current.addEventListener('canplaythrough', handleHyperspaceLoaded);
-
-    return () => {
-      if (backgroundMusicRef.current) {
-        backgroundMusicRef.current.removeEventListener('canplaythrough', handleBackgroundLoaded);
-      }
-      if (hyperspaceSoundRef.current) {
-        hyperspaceSoundRef.current.removeEventListener('canplaythrough', handleHyperspaceLoaded);
-      }
-    };
-  }, []);
-
-  // Handle user interaction to start audio
-  useEffect(() => {
-    const handleUserInteraction = async () => {
+    const startAudio = async () => {
       try {
-        if (!isReady && backgroundMusicRef.current) {
-          const playPromise = backgroundMusicRef.current.play();
-          if (playPromise !== undefined) {
-            await playPromise;
-            setIsReady(true);
-            setIsPlaying(true);
-            console.log('Audio playback started successfully');
-          }
+        if (backgroundMusicRef.current && !isReady) {
+          await backgroundMusicRef.current.play();
+          setIsReady(true);
         }
       } catch (error) {
-        console.log('Playback failed:', error);
+        console.error('Initial audio playback failed:', error);
       }
     };
 
-    const interactions = ['click', 'touchstart', 'keydown'];
-    interactions.forEach(event => 
-      document.addEventListener(event, handleUserInteraction, { once: true })
-    );
+    // Start audio and immediately mute it
+    startAudio();
 
-    return () => {
-      interactions.forEach(event => 
-        document.removeEventListener(event, handleUserInteraction)
-      );
-    };
-  }, [isReady]);
-
-  // Handle hyperspace sound effect
-  useEffect(() => {
-    if (!hyperspaceSoundRef.current || !isReady || isMuted) return;
-
-    const handleHyperspace = async () => {
-      try {
-        if (hyperspaceActive) {
-          hyperspaceSoundRef.current.currentTime = 0;
-          const playPromise = hyperspaceSoundRef.current.play();
-          if (playPromise !== undefined) {
-            await playPromise;
-          }
-        } else {
-          hyperspaceSoundRef.current.pause();
-          hyperspaceSoundRef.current.currentTime = 0;
-        }
-      } catch (error) {
-        console.error('Hyperspace sound playback error:', error);
-      }
-    };
-
-    handleHyperspace();
-  }, [hyperspaceActive, isReady, isMuted]);
-
-  // Handle button click
-  const handleClick = () => {
-    if (selectedGalaxy) {
-      onBackToUniverse();
-    } else {
-      setIsMuted(!isMuted);
-      if (!isMuted) {
-        // Muting
-        if (backgroundMusicRef.current) {
-          backgroundMusicRef.current.volume = 0;
-        }
-        if (hyperspaceSoundRef.current) {
-          hyperspaceSoundRef.current.volume = 0;
-        }
-      } else {
-        // Unmuting
-        if (backgroundMusicRef.current) {
-          backgroundMusicRef.current.volume = 0.8;
-        }
-        if (hyperspaceSoundRef.current) {
-          hyperspaceSoundRef.current.volume = 0.9;
-        }
-      }
-    }
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
     return () => {
       if (backgroundMusicRef.current) {
         backgroundMusicRef.current.pause();
-        backgroundMusicRef.current = null;
       }
       if (hyperspaceSoundRef.current) {
         hyperspaceSoundRef.current.pause();
-        hyperspaceSoundRef.current = null;
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!hyperspaceSoundRef.current || !isReady || isMuted) return;
+
+    if (hyperspaceActive) {
+      hyperspaceSoundRef.current.currentTime = 0;
+      hyperspaceSoundRef.current.play().catch(console.error);
+    } else {
+      hyperspaceSoundRef.current.pause();
+      hyperspaceSoundRef.current.currentTime = 0;
+    }
+  }, [hyperspaceActive, isReady, isMuted]);
+
+  const handleClick = () => {
+    if (selectedGalaxy) {
+      onBackToUniverse();
+      return;
+    }
+
+    setIsMuted(!isMuted);
+    
+    if (backgroundMusicRef.current) {
+      backgroundMusicRef.current.volume = isMuted ? 0.8 : 0;
+    }
+    if (hyperspaceSoundRef.current) {
+      hyperspaceSoundRef.current.volume = isMuted ? 0.9 : 0;
+    }
+  };
 
   const expanded = typeof isMapExpanded === 'boolean' ? isMapExpanded : false;
 
@@ -167,10 +96,7 @@ const AudioManager = ({ hyperspaceActive, isMapExpanded, selectedGalaxy, onBackT
     >
       <i 
         className={selectedGalaxy ? "ri-arrow-left-line" : (isMuted ? "ri-volume-mute-line" : "ri-volume-up-line")}
-        style={{ 
-          fontSize: '1.2em',
-          transition: 'all 0.1s ease-in-out'
-        }}
+        style={{ fontSize: '1.2em', transition: 'all 0.1s ease-in-out' }}
       />
     </button>
   );
