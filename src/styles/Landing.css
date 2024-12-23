@@ -57,6 +57,7 @@ canvas {
 /* Layout utilities */
 .flex {
     display: flex;
+    margin: 2px;
 }
 
 .justify-between {

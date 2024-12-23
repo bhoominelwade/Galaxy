@@ -4,53 +4,27 @@ import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import SpiralGalaxy from './SpiralGalaxy';
 import Planet from './Planet.jsx';
-import { useIsInView } from '../hooks/useIsInView.js';
-import ChunkAndLODManager from './optimizations/ChunkAndLODManager';
-import { LOD_LEVELS } from './optimizations/constants';
-import UniverseSpheres from './UniverseSperese.jsx'
+import UniverseSpheres from './UniverseSperese.jsx';
 import DynamicStarfield from './DynamicStarfield.jsx';
 import MapNavigation from './Minimap';
-import CullingManager from './CullingManager'
-import UniverseReveal from './UniverseReveal.jsx'
-import AudioManager from './AudioManager'
-import { TrendingUp } from 'lucide-react';
-import TransactionAnalytics from './TransactionAnalytics';
-import WalletSearch from './WalletSearch'
+import CullingManager from './CullingManager';
+import UniverseReveal from './UniverseReveal.jsx';
+import AudioManager from './AudioManager';
+import WalletSearch from './WalletSearch';
+import  TransactionAnalytics from './TransactionAnalytics'
+import WebGL from './WebGL'
 
 
-
+// Constants
 const WS_URL = 'ws://localhost:3000';
-
-const WebGLContextHandler = () => {
-  const { gl } = useThree();
-
-  useEffect(() => {
-    const canvas = gl.domElement;
-
-    const handleContextLost = (event) => {
-      event.preventDefault();
-      console.log('WebGL context lost, attempting to restore...');
-    };
-
-    const handleContextRestored = () => {
-      console.log('WebGL context restored');
-      gl.setSize(gl.domElement.width, gl.domElement.height);
-    };
-
-    canvas.addEventListener('webglcontextlost', handleContextLost, false);
-    canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
-
-    return () => {
-      canvas.removeEventListener('webglcontextlost', handleContextLost);
-      canvas.removeEventListener('webglcontextrestored', handleContextRestored);
-    };
-  }, [gl]);
-
-  return null;
-};
+const MAX_PLANETS_PER_GALAXY = 40;
+const TARGET_GALAXY_AMOUNT = 6000;
+const MAX_GALAXY_AMOUNT = 7000;
 
 
 const Universe = () => {
+
+  // State Management
   const [galaxies, setGalaxies] = useState([]);
   const [solitaryPlanets, setSolitaryPlanets] = useState([]);
   const [selectedGalaxy, setSelectedGalaxy] = useState(null);
@@ -58,60 +32,62 @@ const Universe = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState(null);
   const [searchError, setSearchError] = useState('');
-  const mainCameraRef = useRef();
-  const controlsRef = useRef();
   const [wsConnected, setWsConnected] = useState(false);
-  const wsRef = useRef(null);
-  const lastGalaxyRef = useRef(null);
-  const processedTransactions = useRef(new Set());
   const [walletAddress, setWalletAddress] = useState('');
   const [userTransactions, setUserTransactions] = useState([]);
   const [isWalletView, setIsWalletView] = useState(false);
   const [walletSearchError, setWalletSearchError] = useState('');
   const [visibleObjects, setVisibleObjects] = useState(new Set());
-  const wheelSpeed = useRef(1);
   const [objectLODs, setObjectLODs] = useState(new Map());
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const allTransactionsRef = useRef(new Set());
   const [zoomPhase, setZoomPhase] = useState('none');
   const [universeRevealActive, setUniverseRevealActive] = useState(false);
   const [statusInfo, setStatusInfo] = useState('');
   const [isMapExpanded, setIsMapExpanded] = useState(false);
 
+  // Refs
+  const mainCameraRef = useRef();
+  const controlsRef = useRef();
+  const wsRef = useRef(null);
+  const lastGalaxyRef = useRef(null);
+  const processedTransactions = useRef(new Set());
+  const wheelSpeed = useRef(1);
+  const allTransactionsRef = useRef(new Set());
   const galaxyPositionsRef = useRef(new Map());
+
+ 
+// Galaxy Position Calculator
   const calculateGalaxyPosition = useCallback((index, total) => {
     if (galaxyPositionsRef.current.has(index)) {
       return galaxyPositionsRef.current.get(index);
     }
-  
-    // Create multiple layers/rings of galaxies
+
+    // Calculate position with improved distribution
     const layerSize = Math.ceil(Math.sqrt(total));
     const layer = Math.floor(index / layerSize);
     const indexInLayer = index % layerSize;
     
-    const minRadius = 200;  // Increased base radius
-    const maxRadius = 800;  // Much larger maximum radius
-    const verticalSpread = 300; // Increased vertical spread
-    const spiralFactor = 6;  // More spiral arms
+    const minRadius = 200;
+    const maxRadius = 800;
+    const verticalSpread = 300;
+    const spiralFactor = 6;
     
-    // Calculate layer-specific parameters
     const layerRadiusMultiplier = (layer + 1) / Math.ceil(total / layerSize);
     const baseRadius = minRadius + (maxRadius - minRadius) * layerRadiusMultiplier;
     
-    // Add variety to each layer
     const angleOffset = (layer * Math.PI * 0.5) + (Math.random() * Math.PI * 0.25);
     const layerHeight = (layer - Math.floor(total / layerSize) / 2) * (verticalSpread / 2);
     
-    // Calculate position with more randomization
     const angle = (indexInLayer / layerSize) * Math.PI * 2 * spiralFactor + angleOffset;
     const radiusJitter = (Math.random() - 0.5) * baseRadius * 0.3;
     const finalRadius = baseRadius + radiusJitter;
     
-    const x = Math.cos(angle) * finalRadius;
-    const z = Math.sin(angle) * finalRadius;
-    const y = layerHeight + (Math.random() - 0.5) * verticalSpread;
-  
-    const position = [x, y, z];
+    const position = [
+      Math.cos(angle) * finalRadius,
+      layerHeight + (Math.random() - 0.5) * verticalSpread,
+      Math.sin(angle) * finalRadius
+    ];
+    
     galaxyPositionsRef.current.set(index, position);
     return position;
   }, []);
@@ -484,42 +460,7 @@ useEffect(() => {
     }
   }, [galaxies]);
 
-  const handleMinimapNavigate = useCallback((newPosition) => {
-    if (controlsRef.current && mainCameraRef.current) {
-      const camera = mainCameraRef.current;
-      const controls = controlsRef.current;
-      const duration = 1000;
-      const startPosition = {
-        x: camera.position.x,
-        y: camera.position.y,
-        z: camera.position.z
-      };
-      const startTime = Date.now();
-
-      const animate = () => {
-        const now = Date.now();
-        const elapsed = now - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        
-        camera.position.set(
-          startPosition.x + (newPosition[0] - startPosition.x) * eased,
-          startPosition.y + (newPosition[1] - startPosition.y) * eased,
-          startPosition.z + (newPosition[2] - startPosition.z) * eased
-        );
-        
-        controls.target.set(camera.position.x, 0, camera.position.z);
-        controls.update();
-        
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        }
-      };
-      
-      animate();
-    }
-  }, []);
-
+ 
   const handleSearch = (e) => {
     e.preventDefault();
     setSearchError('');
@@ -857,58 +798,11 @@ useEffect(() => {
       calculateGalaxyPosition={calculateGalaxyPosition}
     />
   
-        {/* Nova Analytics */}
-        <div style={{
-          position: 'absolute',
-          bottom: '1rem',
-          left: '76rem',
-          zIndex: 10,
-          color: 'white',
-          background: 'rgba(0, 0, 0, 0.7)',
-          padding: '1rem',
-          borderRadius: '0.5rem',
-          fontFamily: 'monospace',
-          backdropFilter: 'blur(4px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          minWidth: '300px',
-          // marginLeft: '90rem',
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '0.75rem',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-            paddingBottom: '0.5rem'
-          }}>
-            <TrendingUp size={20} />
-            <span style={{ fontWeight: 'bold' }}>NOVA Analytics</span>
-          </div>
-  
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {[...galaxies.flatMap(g => g.transactions), ...solitaryPlanets]
-              .sort((a, b) => b.amount - a.amount)
-              .slice(0, 3)
-              .map((tx, index) => (
-                <div key={tx.hash} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '0.5rem',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                onClick={() => handleTransactionHighlight(tx.hash)}
-                onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.1)'}
-                onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.05)'}
-                >
-                  <span style={{ opacity: 0.8 }}>{tx.hash.slice(0, 8)}...</span>
-                  <span style={{ color: '#4ade80' }}>{tx.amount.toFixed(2)}</span>
-                </div>
-              ))}
-          </div>
-        </div>
+        <TransactionAnalytics 
+  galaxies={galaxies}
+  solitaryPlanets={solitaryPlanets}
+  onTransactionHighlight={handleTransactionHighlight}
+/>
   
         {/* Main Canvas */}
         <Canvas 
@@ -944,7 +838,7 @@ useEffect(() => {
           }
         >
           <Suspense fallback={null}>
-            <WebGLContextHandler />
+            <WebGL/>
   
             {universeRevealActive && (
               <UniverseReveal active={true} />
@@ -1065,10 +959,11 @@ useEffect(() => {
         {/* Minimap */}
         <MapNavigation 
   mainCamera={mainCameraRef.current}
+  controlsRef={controlsRef}
   galaxyPositions={galaxyPositions}
-  onNavigate={handleMinimapNavigate}
+  onNavigate={() => {}}
   selectedGalaxy={selectedGalaxy ? galaxies.indexOf(selectedGalaxy) : null}
-   onExpandChange={setIsMapExpanded} 
+  onExpandChange={setIsMapExpanded} 
 />
   
         {/* Stats */}

@@ -39,14 +39,14 @@ function SocialIcons() {
         <img 
           src="public/textures/TweetX.png" 
           alt="Twitter Icon" 
-          style={{ width: '35px', height: '35px' }} // Set to 35px for a smaller size
+          style={{ width: '35px', height: '20px' }} // Set to 35px for a smaller size
         />
       </a>
       <a href="#" className="hover:opacity-80 transition-opacity">
         <img 
           src="public/textures/ndex.png" 
           alt="Dex Icon" 
-          style={{ width: '60px', height: '60px' }} // Set to 60px for a smaller size
+          style={{ width: '60px', height: '45px' }} // Set to 60px for a smaller size
         />
       </a>
       <a href="#" className="hover:opacity-80 transition-opacity">
@@ -54,8 +54,8 @@ function SocialIcons() {
           src="public/textures/notess-removebg-preview.png" 
           alt="Notes Icon" 
           style={{ 
-            width: '35px', // Set to 35px for a smaller size
-            height: '35px', 
+            width: '20px', // Set to 35px for a smaller size
+            height: '20px', 
             filter: 'brightness(0) invert(1)' 
           }} 
         />
