@@ -10,5 +10,6 @@ cmds = [
 [phases.build]
 cmds = ["npm run build --prefix client"]
 
-[phases.start]
-cmd = "npm start --prefix server"
+[start]
+cmd = "node server/server.js"
+startCommand = "node server/server.js"
