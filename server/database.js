@@ -1,8 +1,10 @@
-const axios = require('axios');
-const { PrismaClient } = require('@prisma/client');
 const dotenv = require('dotenv');
 
 dotenv.config();
+
+const axios = require('axios');
+const { PrismaClient } = require('@prisma/client');
+
 const prisma = new PrismaClient();
 
 if (!process.env.SOLSCAN_API_KEY || !process.env.TOKEN_ADDRESS) {

@@ -6,7 +6,7 @@ const { tokenMetricsService } = require('./database.js');
 const WebSocket = require('ws');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; 
 const server = createServer(app);
 const wss = new WebSocket.Server({ server });
 const sentTransactions = new Set();
