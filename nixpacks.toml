@@ -1,14 +1,11 @@
 [phases.setup]
-aptPkgs = ["nodejs", "npm"]
+aptPkgs = ["nodejs", "npm", "python3", "build-essential"]
 
-[phases.install]
-cmds = [
-  "cd server && npm install --legacy-peer-deps",
-  "cd ../client && npm install --legacy-peer-deps"
-]
+[phases.install.cmds]
+commands = ["npm install"]
 
 [phases.build]
-cmds = ["cd client && npm run build"]
+cmds = ["npm run build"]
 
 [start]
-cmd = "cd server && node server.js"
+cmd = "npm start"
