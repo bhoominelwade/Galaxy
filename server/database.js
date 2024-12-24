@@ -25,7 +25,7 @@ class TokenMetricsService {
       baseURL: 'https://pro-api.solscan.io/v2.0',
       headers: {
         'Accept': 'application/json',
-        'Token': process.env.VITE_SOLSCAN_API_KEY
+        'Token': TOKEN_ADDRESS
       },
       timeout: 10000 // 10 second timeout
     });
