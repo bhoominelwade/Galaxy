@@ -1,20 +1,14 @@
 [phases.setup]
-aptPkgs = ["nodejs", "npm"]
+aptPkgs = ["nodejs", "npm", "python3", "make", "g++"]
 
 [phases.install]
 cmds = [
-  "cd server && npm ci",
-  "cd ../client && npm ci"
+  "npm ci --prefix server",
+  "npm ci --prefix client"
 ]
 
 [phases.build]
-cmds = [
-  "cd client && npm run build",
-  "cd ../server"
-]
+cmds = ["npm run build --prefix client"]
 
 [phases.start]
-cmd = "cd server && node server.js"
-
-[start]
-cmd = "node server/server.js"
+cmd = "npm start --prefix server"
