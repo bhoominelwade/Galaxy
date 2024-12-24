@@ -24,9 +24,9 @@ class TokenMetricsService {
     this.api = axios.create({
       baseURL: 'https://pro-api.solscan.io/v2.0',
       headers: {
-        'Accept': 'application/json',
-        'token': process.env.SOLSCAN_API_KEY
-      },
+  'Accept': 'application/json',
+  'Token': process.env.SOLSCAN_API_KEY
+},
       timeout: 10000 // 10 second timeout
     });
   }
