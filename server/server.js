@@ -207,3 +207,12 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
   cleanup();
 });
+
+const path = require('path');
+
+// Serve React app from the 'dist/' folder
+app.use(express.static(path.resolve(__dirname, '../client/dist')));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../client/dist', 'index.html'));
+});
