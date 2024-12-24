@@ -1,11 +1,11 @@
 [phases.setup]
-# Install dependencies for backend and frontend
-run = "npm install && cd client && npm install"
+# Install dependencies for both backend and frontend
+run = "cd server && npm install && cd ../client && npm install"
 
 [phases.build]
-# Build the frontend React app
+# Build the React frontend
 run = "cd client && npm run build"
 
 [phases.start]
-# Start the backend server
-run = "node server.js"
+# Start the backend server (ensure server.js is configured correctly)
+run = "cd server && node server.js"
