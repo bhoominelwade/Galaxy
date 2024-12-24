@@ -12,6 +12,7 @@ if (!process.env.VITE_SOLSCAN_API_KEY || !process.env.VITE_TOKEN_ADDRESS) {
 const TOKEN_ADDRESS = process.env.VITE_TOKEN_ADDRESS;
 const API_RETRY_DELAY = 1000;
 const TRANSACTION_FETCH_DELAY = 500;
+const API_KEY=process.env.VITE_SOLSCAN_API_KEY
 
 class TokenMetricsService {
   static instance;
@@ -25,7 +26,7 @@ class TokenMetricsService {
       baseURL: 'https://pro-api.solscan.io/v2.0',
       headers: {
         'Accept': 'application/json',
-        'Token': TOKEN_ADDRESS
+        'Token': API_KEY,
       },
       timeout: 10000 // 10 second timeout
     });
