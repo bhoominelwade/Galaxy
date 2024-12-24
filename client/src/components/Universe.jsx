@@ -16,7 +16,9 @@ import WebGL from './WebGL'
 
 
 // Constants
-const WS_URL = 'ws://localhost:3000';
+const WS_URL = window.location.protocol === 'https:' 
+  ? `wss://${window.location.host}`
+  : `ws://${window.location.host}`;
 const MAX_PLANETS_PER_GALAXY = 40;
 const TARGET_GALAXY_AMOUNT = 6000;
 const MAX_GALAXY_AMOUNT = 7000;
@@ -581,7 +583,7 @@ useEffect(() => {
         let total = 0;
     
         // First get the total count
-        const initialResponse = await fetch('http://localhost:3000/api/transactions?offset=0&limit=1');
+        const initialResponse = await fetch(`/api/transactions?offset=0&limit=1`);
         const initialData = await initialResponse.json();
         total = initialData.total;
         console.log(`Total transactions to load: ${total}`);
@@ -589,8 +591,8 @@ useEffect(() => {
         // Then fetch all transactions in batches
         while (offset < total) {
           const response = await fetch(
-            `http://localhost:3000/api/transactions?offset=${offset}&limit=1000`
-          );
+  `/api/transactions?offset=${offset}&limit=1000`
+);
           const data = await response.json();
           
           if (!data.transactions || !Array.isArray(data.transactions)) {
