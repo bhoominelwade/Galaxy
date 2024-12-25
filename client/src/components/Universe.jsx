@@ -61,8 +61,6 @@ const Universe = () => {
   const allTransactionsRef = useRef(new Set());
   const galaxyPositionsRef = useRef(new Map());
 
-
-
  
 // Galaxy Position Calculator
   const calculateGalaxyPosition = useCallback((index, total) => {
