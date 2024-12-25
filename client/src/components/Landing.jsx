@@ -51,7 +51,7 @@ function SocialIcons() {
       </a>
       <a href="#" className="hover:opacity-80 transition-opacity">
         <img 
-          src=".https://galaxyrailway-production.up.railway.app/textures/notess-removebg-preview.png" 
+          src="https://galaxyrailway-production.up.railway.app/textures/notess-removebg-preview.png" 
           alt="Notes Icon" 
           style={{ 
             width: '20px', // Set to 35px for a smaller size
