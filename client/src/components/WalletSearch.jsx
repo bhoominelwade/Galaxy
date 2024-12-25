@@ -10,16 +10,50 @@ const WalletSearch = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [walletAddress, setWalletAddress] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchType, setSearchType] = useState('wallet'); // 'wallet' or 'transaction'
   const [userTransactions, setUserTransactions] = useState([]);
   const [isWalletView, setIsWalletView] = useState(false);
-  const [walletSearchError, setWalletSearchError] = useState('');
+  const [searchError, setSearchError] = useState('');
+
+  const handleTransactionSearch = (hash) => {
+    setSearchError('');
+    if (!hash || !hash.trim()) return;
+
+    // Search in galaxies
+    for (const galaxy of galaxies) {
+      if (!galaxy.transactions) continue;
+      
+      const transaction = galaxy.transactions.find(tx => 
+        tx.hash.toLowerCase() === hash.toLowerCase()
+      );
+      
+      if (transaction) {
+        setUserTransactions([transaction]);
+        setIsWalletView(true);
+        handleTransactionHighlight(transaction.hash);
+        return;
+      }
+    }
+
+    // Search in solitary planets
+    const solitaryTransaction = solitaryPlanets.find(tx =>
+      tx.hash.toLowerCase() === hash.toLowerCase()
+    );
+
+    if (solitaryTransaction) {
+      setUserTransactions([solitaryTransaction]);
+      setIsWalletView(true);
+      handleTransactionHighlight(solitaryTransaction.hash);
+    } else {
+      setSearchError('Transaction not found');
+      setUserTransactions([]);
+      setIsWalletView(false);
+    }
+  };
 
   const handleWalletSearch = (address) => {
-    console.log('Searching for address:', address); // Debug log
-    console.log('Number of galaxies:', galaxies.length); // Debug log
-    
-    setWalletSearchError('');
+    setSearchError('');
     if (!address || !address.trim()) return;
 
     const seenHashes = new Set();
@@ -48,25 +82,39 @@ const WalletSearch = ({
 
     const transactions = [...buyTransactions, ...solitaryBuyTransactions];
     
-    console.log('Found transactions:', transactions.length); // Debug log
-    
     if (transactions.length > 0) {
       transactions.sort((a, b) => b.amount - a.amount);
       setUserTransactions(transactions);
       setIsWalletView(true);
     } else {
-      setWalletSearchError('No transactions found for this wallet');
+      setSearchError('No transactions found for this wallet');
       setUserTransactions([]);
       setIsWalletView(false);
     }
   };
 
+  const handleSearch = () => {
+    if (searchType === 'wallet') {
+      handleWalletSearch(searchInput);
+    } else {
+      handleTransactionSearch(searchInput);
+    }
+  };
+
   const handleKeyDown = async (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+    if (e.key === 'Enter') {
+      handleSearch();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
       try {
         const clipText = await navigator.clipboard.readText();
-        setWalletAddress(clipText);
-        handleWalletSearch(clipText);
+        setSearchInput(clipText);
+        setTimeout(() => {
+          if (searchType === 'wallet') {
+            handleWalletSearch(clipText);
+          } else {
+            handleTransactionSearch(clipText);
+          }
+        }, 0);
       } catch (err) {
         console.error('Failed to read clipboard:', err);
       }
@@ -75,8 +123,14 @@ const WalletSearch = ({
 
   const handlePaste = (e) => {
     const pastedText = e.clipboardData.getData('text');
-    setWalletAddress(pastedText);
-    setTimeout(() => handleWalletSearch(pastedText), 0);
+    setSearchInput(pastedText);
+    setTimeout(() => {
+      if (searchType === 'wallet') {
+        handleWalletSearch(pastedText);
+      } else {
+        handleTransactionSearch(pastedText);
+      }
+    }, 0);
   };
 
   const handleTransactionHighlight = (txHash) => {
@@ -143,11 +197,11 @@ const WalletSearch = ({
     }
   };
 
-  const clearWalletSearch = () => {
-    setWalletAddress('');
+  const clearSearch = () => {
+    setSearchInput('');
     setUserTransactions([]);
     setIsWalletView(false);
-    setWalletSearchError('');
+    setSearchError('');
     onTransactionSelect(null, null);
     setIsExpanded(false);
     setIsHovered(false);
@@ -192,7 +246,7 @@ const WalletSearch = ({
             transition: 'all 0.4s ease-in-out',
           }}
         >
-          <i className="ri-wallet-line" style={{ fontSize: '1.2em' }} />
+          <i className="ri-search-line" style={{ fontSize: '1.2em' }} />
         </button>
       )}
 
@@ -213,28 +267,58 @@ const WalletSearch = ({
             alignItems: 'center',
             gap: '10px'
           }}>
-            <input
-              type="text"
-              value={walletAddress}
-              onChange={(e) => setWalletAddress(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              placeholder="Enter wallet address..."
-              style={{
-                padding: '10px 15px',
-                background: 'rgba(0, 0, 0, 0.5)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '8px',
-                color: 'white',
-                outline: 'none',
-                width: '340px',
-                backdropFilter: 'blur(10px)',
-                fontSize: '14px',
-                transition: 'all 0.3s ease',
-              }}
-            />
+            <div style={{
+              display: 'flex',
+              flex: 1,
+              gap: '8px'
+            }}>
+              <select
+                value={searchType}
+                onChange={(e) => {
+                  setSearchType(e.target.value);
+                  setSearchError('');
+                  setUserTransactions([]);
+                  setIsWalletView(false);
+                }}
+                style={{
+                  padding: '10px',
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  color: 'white',
+                  outline: 'none',
+                  fontSize: '14px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="wallet">Wallet</option>
+                <option value="transaction">Transaction</option>
+              </select>
+              
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                placeholder={searchType === 'wallet' ? "Enter wallet address..." : "Enter transaction hash..."}
+                style={{
+                  padding: '10px 15px',
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  color: 'white',
+                  outline: 'none',
+                  width: '100%',
+                  backdropFilter: 'blur(10px)',
+                  fontSize: '14px',
+                  transition: 'all 0.3s ease',
+                }}
+              />
+            </div>
+
             <button
-              onClick={clearWalletSearch}
+              onClick={clearSearch}
               style={{
                 display: 'grid',
                 placeItems: 'center',
@@ -253,7 +337,7 @@ const WalletSearch = ({
             </button>
           </div>
 
-          {walletSearchError && (
+          {searchError && (
             <div style={{
               color: '#ff6b6b',
               background: 'rgba(255, 77, 77, 0.1)',
@@ -262,7 +346,7 @@ const WalletSearch = ({
               fontSize: '13px',
               border: '1px solid rgba(255, 77, 77, 0.2)'
             }}>
-              {walletSearchError}
+              {searchError}
             </div>
           )}
 
@@ -288,8 +372,13 @@ const WalletSearch = ({
                 padding: '0 6px',
                 fontSize: '12px'
               }}>
-                <span>Wallet: {walletAddress.slice(0, 8)}...</span>
-                <span>{userTransactions.length} transactions</span>
+                <span>
+                  {searchType === 'wallet' 
+                    ? `Wallet: ${searchInput.slice(0, 8)}...`
+                    : 'Transaction Details'
+                  }
+                </span>
+                <span>{userTransactions.length} transaction{userTransactions.length !== 1 ? 's' : ''}</span>
               </div>
               
               <div style={{

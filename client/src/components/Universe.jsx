@@ -16,9 +16,10 @@ import WebGL from './WebGL'
 
 
 // Constants
-const WS_URL = window.location.protocol === 'https:' 
+/* const WS_URL = window.location.protocol === 'https:' 
   ? `wss://${window.location.host}`
-  : `ws://${window.location.host}`;
+  : `ws://${window.location.host}`; */
+const WS_URL = 'ws://localhost:3000';
 const MAX_PLANETS_PER_GALAXY = 40;
 const TARGET_GALAXY_AMOUNT = 6000;
 const MAX_GALAXY_AMOUNT = 7000;
@@ -945,6 +946,7 @@ useEffect(() => {
         </Canvas>
   
         {/* Status Info */}
+        {
         <div style={{ 
           position: 'absolute', 
           bottom: '5rem',
@@ -964,6 +966,7 @@ useEffect(() => {
         }}>
           {statusInfo}
         </div>
+}
   
         {/* Minimap */}
         {!selectedGalaxy && (
