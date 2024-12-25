@@ -51,7 +51,7 @@ const AudioManager = ({ hyperspaceActive, isMapExpanded, selectedGalaxy, onBackT
         await backgroundMusicRef.current?.play();
       } catch (error) {
         console.error('Audio playback failed:', error);
-        setIsMuted(true);
+        setIsMuted(false);
       }
     }
   };
