@@ -13,7 +13,11 @@ const NAME_OPACITY_BASE = 0.7;
 //Create and preload planet textures
 const textureLoader = new THREE.TextureLoader();
 const textures = Array.from({ length: NUMBER_OF_TEXTURES }, (_, i) => {
-  const texture = textureLoader.load(`/textures/tex${i + 1}.jpg`);
+  const texture = textureLoader.load(`/textures/tex${i + 1}.jpg`,
+    undefined,
+    undefined,
+    (error) => console.error(`Error loading texture ${i + 1}:`, error)
+  );
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   return texture;
@@ -72,6 +76,7 @@ const PlanetTooltip = ({ transaction, textureIndex }) => (
 //PlanetMesh Component - Renders individual planet with interactions
 const PlanetMesh = ({ transaction, onHover, isSelected = false, isHighlighted = false }) => {
   const planetRef = useRef();
+  const glowRef = useRef();
   const { camera } = useThree();
   const [hovered, setHovered] = useState(false);
   const [nameOpacity, setNameOpacity] = useState(NAME_OPACITY_BASE);
@@ -97,17 +102,29 @@ const PlanetMesh = ({ transaction, onHover, isSelected = false, isHighlighted = 
     return lastAssignedIndex;
   }, [transaction]);
 
+  // Material properties for glow effect
+  const materialProps = useMemo(() => ({
+    metalness: 0.2,
+    roughness: 0.8,
+    emissive: isHighlighted || isSelected ? '#00ffff' : '#000000', // Changed to cyan
+    emissiveIntensity: isHighlighted || isSelected ? 5 : 0, // Increased intensity
+  }), [isHighlighted, isSelected]);
+
   // Handle planet rotation and name opacity
   useFrame(() => {
     if (planetRef.current) {
       planetRef.current.rotation.y += ROTATION_SPEED;
       
-      // Update name opacity based on distance
       if (camera) {
         const distance = planetRef.current.position.distanceTo(camera.position);
         const opacity = Math.max(0.5, Math.min(0.9, 40 / distance));
         setNameOpacity(opacity);
       }
+    }
+    
+    // Animate glow
+    if (glowRef.current && (isHighlighted || isSelected)) {
+      glowRef.current.scale.setScalar(1.2 + Math.sin(Date.now() * 0.003) * 0.1);
     }
   });
 
@@ -145,18 +162,74 @@ const PlanetMesh = ({ transaction, onHover, isSelected = false, isHighlighted = 
         <sphereGeometry args={[planetSize, 32, 32]} />
         <meshStandardMaterial
           map={textures[textureIndex]}
-          metalness={0.2}
-          roughness={0.8}
+          {...materialProps}
         />
       </mesh>
 
-      {/* Local illumination */}
-      <pointLight
-        position={[planetSize * 2, 0, 0]}
-        intensity={0.5}
-        distance={planetSize * 6}
-        color="#ffffff"
-      />
+      {/* Animated glow sphere */}
+      {(isHighlighted || isSelected) && (
+        <mesh ref={glowRef}>
+          <sphereGeometry args={[planetSize * 1.2, 32, 32]} />
+          <meshBasicMaterial
+            color="#00ffff"
+            transparent
+            opacity={0.3}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+      )}
+
+      {/* Multiple glow layers with different colors */}
+      {(isHighlighted || isSelected) && [
+        { scale: 1.4, color: '#00ffff', opacity: 0.2 },
+        { scale: 1.6, color: '#40e0d0', opacity: 0.15 },
+        { scale: 1.8, color: '#7fffd4', opacity: 0.1 }
+      ].map((layer, index) => (
+        <mesh key={index} scale={[layer.scale, layer.scale, layer.scale]}>
+          <sphereGeometry args={[planetSize, 32, 32]} />
+          <meshBasicMaterial
+            color={layer.color}
+            transparent
+            opacity={layer.opacity}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+
+      {/* Enhanced point lights */}
+      {(isHighlighted || isSelected) && (
+        <>
+          <pointLight
+            position={[planetSize * 2, 0, 0]}
+            intensity={8.0}
+            distance={planetSize * 20}
+            color="#00ffff"
+          />
+          <pointLight
+            position={[-planetSize * 2, 0, 0]}
+            intensity={6.0}
+            distance={planetSize * 15}
+            color="#40e0d0"
+          />
+          <pointLight
+            position={[0, planetSize * 2, 0]}
+            intensity={4.0}
+            distance={planetSize * 12}
+            color="#7fffd4"
+          />
+        </>
+      )}
+
+      {/* Default light for non-highlighted planets */}
+      {!isHighlighted && !isSelected && (
+        <pointLight
+          position={[planetSize * 2, 0, 0]}
+          intensity={0.5}
+          distance={planetSize * 6}
+          color="#ffffff"
+        />
+      )}
 
       {/* Planet name */}
       <Html
@@ -169,7 +242,7 @@ const PlanetMesh = ({ transaction, onHover, isSelected = false, isHighlighted = 
         }}
       >
         <div style={{
-          color: 'white',
+          color: isHighlighted || isSelected ? '#00ffff' : 'white',
           fontSize: '10px',
           fontFamily: 'monospace',
           textAlign: 'center',

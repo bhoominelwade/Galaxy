@@ -7,13 +7,15 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import Planet from './Planet';
 
 const BASE_ORBIT_RANGES = [
-  { minRadius: 10, maxRadius: 15, tilt: 3.4 },
-  { minRadius: 18, maxRadius: 24, tilt: 2.2 },
-  { minRadius: 25, maxRadius: 32, tilt: 1.8 },
-  { minRadius: 33, maxRadius: 40, tilt: 1.9 },
-  { minRadius: 41, maxRadius: 48, tilt: 1.3 },
-  { minRadius: 49, maxRadius: 56, tilt: 2.5 }
+  { minRadius: 15, maxRadius: 20, tilt: 3.4 },  
+  { minRadius: 25, maxRadius: 30, tilt: 2.2 },  
+  { minRadius: 35, maxRadius: 40, tilt: 1.8 },  
+  { minRadius: 45, maxRadius: 50, tilt: 1.9 },  
+  { minRadius: 55, maxRadius: 60, tilt: 1.3 },  
+  { minRadius: 65, maxRadius: 70, tilt: 2.5 }   
 ];
+
+const MIN_PLANET_DISTANCE = 10;
 
 const generateOrbitPath = (baseRadius, tilt, segments = 128, seed = 0) => {
   const points = [];
@@ -62,6 +64,47 @@ const getPositionOnOrbit = (points, progress) => {
   return point.lerp(nextPoint, fraction);
 };
 
+const findSafePosition = (orbit, baseProgress, existingPositions, orbitIndex) => {
+  const segmentSize = 1 / 30; // Fixed segment size for better distribution
+  let bestPosition = null;
+  let bestDistance = 0;
+  
+  // Try positions along the orbit
+  for (let attempt = 0; attempt < 40; attempt++) {
+    // Calculate a position that stays on the orbit
+    const offset = (attempt * segmentSize) % 1;
+    const progress = (baseProgress + offset) % 1;
+    
+    const position = getPositionOnOrbit(orbit.points, progress);
+    const pos = [position.x, position.y, position.z];
+    
+    // Check distance from existing planets
+    let minDistance = Infinity;
+    for (const existing of existingPositions) {
+      const distance = Math.sqrt(
+        Math.pow(pos[0] - existing[0], 2) +
+        Math.pow(pos[1] - existing[1], 2) +
+        Math.pow(pos[2] - existing[2], 2)
+      );
+      minDistance = Math.min(minDistance, distance);
+    }
+    
+    // Update best position if this one has better spacing
+    if (minDistance > bestDistance) {
+      bestDistance = minDistance;
+      bestPosition = pos;
+      
+      // If we found a good position, use it
+      if (minDistance >= MIN_PLANET_DISTANCE) {
+        return pos;
+      }
+    }
+  }
+  
+  // Return the best position we found, even if not perfect
+  return bestPosition;
+};
+
 const ZoomedGalaxy = ({ 
   colorScheme, 
   transactions, 
@@ -103,33 +146,43 @@ const ZoomedGalaxy = ({
     }
 
     const positions = [];
+    const existingPositions = [];
     
-    for (let i = 0; i < transactions.length; i++) {
-      const tx = transactions[i];
-      if (!tx) continue;
-      
-      const orbitIndex = Math.floor(i / (transactions.length / orbitRanges.length));
+    // Determine optimal planets per orbit based on orbit circumference
+    const maxPlanetsPerOrbit = Math.floor(2 * Math.PI * orbitRanges[0].minRadius / (MIN_PLANET_DISTANCE * 1.5));
+    const orbitsNeeded = Math.ceil(transactions.length / maxPlanetsPerOrbit);
+    
+    // Distribute transactions across orbits
+    const transactionGroups = Array.from({ length: orbitsNeeded }, () => []);
+    transactions.forEach((tx, index) => {
+      const orbitIndex = index % orbitsNeeded;
+      transactionGroups[orbitIndex].push(tx);
+    });
+    
+    // Place planets in each orbit
+    transactionGroups.forEach((groupTransactions, orbitIndex) => {
       const orbit = orbitRanges[orbitIndex % orbitRanges.length];
+      if (!orbit || !orbit.points) return;
       
-      if (!orbit || !orbit.points) {
-        continue;
-      }
-
-      const hashValue = tx.hash ? parseInt(tx.hash.slice(-4), 16) : 0;
-      const randomOffset = (hashValue % 100) / 1000;
-      const progress = ((i / transactions.length) + randomOffset) % 1;
-      
-      try {
-        const position = getPositionOnOrbit(orbit.points, progress);
-        positions.push({
-          transaction: tx,
-          position: [position.x, position.y, position.z],
+      groupTransactions.forEach((tx, index) => {
+        const baseProgress = index / groupTransactions.length;
+        const position = findSafePosition(
+          orbit,
+          baseProgress,
+          existingPositions,
           orbitIndex
-        });
-      } catch (error) {
-        console.error('Error positioning planet:', error);
-      }
-    }
+        );
+        
+        if (position) {
+          existingPositions.push(position);
+          positions.push({
+            transaction: tx,
+            position: position,
+            orbitIndex
+          });
+        }
+      });
+    });
     
     return positions;
   }, [transactions, orbitRanges]);
@@ -143,16 +196,20 @@ const ZoomedGalaxy = ({
       0.85
     );
     
+    bloomPass.threshold = 0.2;
+    bloomPass.strength = 2.0;
+    bloomPass.radius = 0.5;
+    
     const composer = new EffectComposer(gl);
     composer.addPass(renderScene);
     composer.addPass(bloomPass);
     composerRef.current = composer;
-
+  
     return () => {
       composer.dispose();
     };
   }, [scene, camera, gl]);
-
+  
   useFrame(() => {
     if (coreRef.current) {
       coreRef.current.rotation.y += 0.005;
