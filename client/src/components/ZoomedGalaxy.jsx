@@ -6,12 +6,6 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import Planet from './Planet';
 
-const LOD_LEVELS = {
-  LOW: { segments: 32, maxPlanets: 40, geometryDetail: 6 },
-  MEDIUM: { segments: 48, maxPlanets: 60, geometryDetail: 8 },
-  HIGH: { segments: 64, maxPlanets: 80, geometryDetail: 10 }
-};
-
 const BASE_ORBIT_RANGES = [
   { minRadius: 15, maxRadius: 20, tilt: 3.4 },  
   { minRadius: 25, maxRadius: 30, tilt: 2.2 },  
@@ -22,10 +16,8 @@ const BASE_ORBIT_RANGES = [
 ];
 
 const MIN_PLANET_DISTANCE = 10;
-const MAX_VISIBLE_DISTANCE = 150;
 
-const generateOrbitPath = (baseRadius, tilt, lodLevel, seed = 0) => {
-  const segments = LOD_LEVELS[lodLevel]?.segments || LOD_LEVELS.MEDIUM.segments;
+const generateOrbitPath = (baseRadius, tilt, segments = 128, seed = 0) => {
   const points = [];
   const random = (x) => Math.sin(seed * 1000 + x * 100) * 0.5 + 0.5;
   const ellipticalStretch = 0.1 + random(0) * 0.2;
@@ -37,28 +29,56 @@ const generateOrbitPath = (baseRadius, tilt, lodLevel, seed = 0) => {
   for (let i = 0; i <= segments; i++) {
     const angle = (i / segments) * Math.PI * 2;
     const r = baseRadius * (1 + Math.sin(angle) * ellipticalStretch);
-    const point = new THREE.Vector3(
-      r * Math.cos(angle),
-      Math.sin(angle * 2) * baseRadius * 0.05,
-      r * Math.sin(angle)
-    );
-    point.applyMatrix4(tiltMatrix).applyMatrix4(planarMatrix);
+    
+    let x = r * Math.cos(angle);
+    let y = Math.sin(angle * 2) * baseRadius * 0.05;
+    let z = r * Math.sin(angle);
+    
+    const point = new THREE.Vector3(x, y, z);
+    point.applyMatrix4(tiltMatrix);
+    point.applyMatrix4(planarMatrix);
+    
     points.push(point);
   }
+  
   return points;
 };
 
-const findSafePosition = (orbit, baseProgress, existingPositions) => {
-  const segmentSize = 1 / 20;
+const getPositionOnOrbit = (points, progress) => {
+  if (!points || points.length === 0) {
+    return new THREE.Vector3(0, 0, 0);
+  }
+
+  const safeProgress = Math.max(0, Math.min(1, progress));
+  const index = Math.floor(safeProgress * (points.length - 1));
+  const nextIndex = (index + 1) % points.length;
+  const fraction = safeProgress * (points.length - 1) - index;
+
+  if (!points[index] || !points[nextIndex]) {
+    return points[0] ? points[0].clone() : new THREE.Vector3(0, 0, 0);
+  }
+
+  const point = points[index].clone();
+  const nextPoint = points[nextIndex].clone();
+  
+  return point.lerp(nextPoint, fraction);
+};
+
+const findSafePosition = (orbit, baseProgress, existingPositions, orbitIndex) => {
+  const segmentSize = 1 / 30; // Fixed segment size for better distribution
   let bestPosition = null;
   let bestDistance = 0;
   
-  for (let attempt = 0; attempt < 20; attempt++) {
+  // Try positions along the orbit
+  for (let attempt = 0; attempt < 40; attempt++) {
+    // Calculate a position that stays on the orbit
     const offset = (attempt * segmentSize) % 1;
     const progress = (baseProgress + offset) % 1;
+    
     const position = getPositionOnOrbit(orbit.points, progress);
     const pos = [position.x, position.y, position.z];
     
+    // Check distance from existing planets
     let minDistance = Infinity;
     for (const existing of existingPositions) {
       const distance = Math.sqrt(
@@ -69,117 +89,163 @@ const findSafePosition = (orbit, baseProgress, existingPositions) => {
       minDistance = Math.min(minDistance, distance);
     }
     
+    // Update best position if this one has better spacing
     if (minDistance > bestDistance) {
       bestDistance = minDistance;
       bestPosition = pos;
-      if (minDistance >= MIN_PLANET_DISTANCE) return pos;
+      
+      // If we found a good position, use it
+      if (minDistance >= MIN_PLANET_DISTANCE) {
+        return pos;
+      }
     }
   }
   
+  // Return the best position we found, even if not perfect
   return bestPosition;
 };
 
-const getPositionOnOrbit = (points, progress) => {
-  if (!points?.length) return new THREE.Vector3();
-  const safeProgress = Math.max(0, Math.min(1, progress));
-  const index = Math.floor(safeProgress * (points.length - 1));
-  const nextIndex = (index + 1) % points.length;
-  const fraction = safeProgress * (points.length - 1) - index;
-  return points[index]?.clone().lerp(points[nextIndex] || points[index], fraction) || new THREE.Vector3();
-};
-
-const ZoomedGalaxy = ({ colorScheme, transactions, safeColorIndex = 0, highlightedHash, setHoveredPlanet, lodLevel = 'MEDIUM' }) => {
+const ZoomedGalaxy = ({ 
+  colorScheme, 
+  transactions, 
+  safeColorIndex = 0, 
+  highlightedHash,
+  setHoveredPlanet,
+  lodLevel = 'HIGH' 
+}) => {
   const { gl, scene, camera } = useThree();
   const coreRef = useRef();
   const glowRef = useRef();
   const composerRef = useRef();
 
   const orbitRanges = useMemo(() => {
-    return BASE_ORBIT_RANGES.map((base, index) => {
-      const baseRadius = base.minRadius + (base.maxRadius - base.minRadius) * Math.random();
-      const points = generateOrbitPath(baseRadius, base.tilt, lodLevel, index + safeColorIndex);
-      return points?.length ? { ...base, radius: baseRadius, points } : null;
-    }).filter(Boolean);
-  }, [safeColorIndex, lodLevel]);
+    try {
+      return BASE_ORBIT_RANGES.map((base, index) => {
+        const baseRadius = base.minRadius + (base.maxRadius - base.minRadius) * Math.random();
+        const points = generateOrbitPath(baseRadius, base.tilt, 128, index + safeColorIndex);
+        
+        if (!points || points.length === 0) {
+          return null;
+        }
+
+        return {
+          ...base,
+          radius: baseRadius,
+          points: points
+        };
+      }).filter(Boolean);
+    } catch (error) {
+      console.error('Error generating orbit ranges:', error);
+      return [];
+    }
+  }, [safeColorIndex]);
 
   const planetPositions = useMemo(() => {
-    if (!orbitRanges?.length || !transactions?.length) return [];
-    
-    const maxPlanets = LOD_LEVELS[lodLevel]?.maxPlanets || LOD_LEVELS.MEDIUM.maxPlanets;
-    const stride = Math.ceil(transactions.length / maxPlanets);
+    if (!orbitRanges || orbitRanges.length === 0 || !transactions || !transactions.length) {
+      return [];
+    }
+
     const positions = [];
     const existingPositions = [];
     
-    transactions
-      .filter((_, i) => i % stride === 0)
-      .forEach((tx, i) => {
-        const orbitIndex = i % orbitRanges.length;
-        const orbit = orbitRanges[orbitIndex];
-        if (!orbit?.points) return;
-
-        const baseProgress = i / (transactions.length / stride);
-        const position = findSafePosition(orbit, baseProgress, existingPositions);
+    // Determine optimal planets per orbit based on orbit circumference
+    const maxPlanetsPerOrbit = Math.floor(2 * Math.PI * orbitRanges[0].minRadius / (MIN_PLANET_DISTANCE * 1.5));
+    const orbitsNeeded = Math.ceil(transactions.length / maxPlanetsPerOrbit);
+    
+    // Distribute transactions across orbits
+    const transactionGroups = Array.from({ length: orbitsNeeded }, () => []);
+    transactions.forEach((tx, index) => {
+      const orbitIndex = index % orbitsNeeded;
+      transactionGroups[orbitIndex].push(tx);
+    });
+    
+    // Place planets in each orbit
+    transactionGroups.forEach((groupTransactions, orbitIndex) => {
+      const orbit = orbitRanges[orbitIndex % orbitRanges.length];
+      if (!orbit || !orbit.points) return;
+      
+      groupTransactions.forEach((tx, index) => {
+        const baseProgress = index / groupTransactions.length;
+        const position = findSafePosition(
+          orbit,
+          baseProgress,
+          existingPositions,
+          orbitIndex
+        );
         
         if (position) {
-          const dist = Math.sqrt(position[0] * position[0] + position[1] * position[1] + position[2] * position[2]);
-          if (dist < MAX_VISIBLE_DISTANCE) {
-            existingPositions.push(position);
-            positions.push({
-              transaction: tx,
-              position,
-              orbitIndex
-            });
-          }
+          existingPositions.push(position);
+          positions.push({
+            transaction: tx,
+            position: position,
+            orbitIndex
+          });
         }
       });
+    });
     
     return positions;
-  }, [transactions, orbitRanges, lodLevel]);
+  }, [transactions, orbitRanges]);
 
   useEffect(() => {
     const renderScene = new RenderPass(scene, camera);
     const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2),
-      0.8,
-      0.3,
-      0.75
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.5,
+      0.4,
+      0.85
     );
+    
+    bloomPass.threshold = 0.2;
+    bloomPass.strength = 2.0;
+    bloomPass.radius = 0.5;
     
     const composer = new EffectComposer(gl);
     composer.addPass(renderScene);
     composer.addPass(bloomPass);
     composerRef.current = composer;
-
-    return () => composer.dispose();
+  
+    return () => {
+      composer.dispose();
+    };
   }, [scene, camera, gl]);
-
+  
   useFrame(() => {
-    if (coreRef.current) coreRef.current.rotation.y += 0.002;
-    if (glowRef.current) glowRef.current.rotation.y -= 0.001;
-    if (composerRef.current) composerRef.current.render();
+    if (coreRef.current) {
+      coreRef.current.rotation.y += 0.005;
+    }
+    if (glowRef.current) {
+      glowRef.current.rotation.y -= 0.003;
+    }
+    if (composerRef.current) {
+      composerRef.current.render();
+    }
   });
-
-  const geometryDetail = LOD_LEVELS[lodLevel]?.geometryDetail || LOD_LEVELS.MEDIUM.geometryDetail;
 
   return (
     <>
       <group>
         <mesh ref={coreRef}>
-          <icosahedronGeometry args={[2, geometryDetail]} />
+          <icosahedronGeometry args={[2, 15]} />
           <meshStandardMaterial
             color={colorScheme?.core}
             emissive={colorScheme?.core}
-            emissiveIntensity={0.3}
+            emissiveIntensity={0.5}
           />
-          <pointLight color={colorScheme?.core} intensity={2} distance={30} decay={2} />
+          <pointLight 
+            color={colorScheme?.core}
+            intensity={3.0}
+            distance={50}
+            decay={2}
+          />
         </mesh>
 
         <mesh ref={glowRef} scale={[1.2, 1.2, 1.2]}>
-          <sphereGeometry args={[2, 12, 12]} />
+          <sphereGeometry args={[2, 32, 32]} />
           <meshStandardMaterial
             color={colorScheme?.core}
             transparent
-            opacity={0.2}
+            opacity={0.3}
             blending={THREE.AdditiveBlending}
           />
         </mesh>
@@ -198,14 +264,14 @@ const ZoomedGalaxy = ({ colorScheme, transactions, safeColorIndex = 0, highlight
           <lineBasicMaterial
             color="#FFF8E7"
             transparent
-            opacity={0.1}
+            opacity={0.2}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
           />
         </line>
       ))}
 
-      {planetPositions.map(({ transaction, position }) => (
+      {planetPositions.map(({ transaction, position }, index) => (
         <Planet
           key={transaction.hash}
           transaction={transaction}
@@ -216,9 +282,9 @@ const ZoomedGalaxy = ({ colorScheme, transactions, safeColorIndex = 0, highlight
         />
       ))}
 
-      <ambientLight intensity={0.3} />
-      <pointLight position={[0, 25, 0]} intensity={1} distance={60} />
-      <pointLight position={[0, -25, 0]} intensity={1} distance={60} />
+      <ambientLight intensity={0.5} />
+      <pointLight position={[0, 30, 0]} intensity={2} distance={100} />
+      <pointLight position={[0, -30, 0]} intensity={2} distance={100} />
     </>
   );
 };

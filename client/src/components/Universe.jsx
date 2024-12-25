@@ -1033,7 +1033,7 @@ useEffect(() => {
 )}
   
         {/* Stats */}
-        <div style={{ 
+        {/* <div style={{ 
           position: 'absolute', 
           bottom: '1rem', 
           left: '1rem', 
@@ -1054,7 +1054,7 @@ useEffect(() => {
             galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
             solitaryPlanets.length
           }</div>
-        </div>
+        </div> */}
   
         {/* Back to Universe Button */}
         {selectedGalaxy && (
