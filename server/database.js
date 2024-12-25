@@ -74,29 +74,30 @@ class TokenMetricsService {
     }
   }
 
-  async getTransactions(limit = 1000, offset = 0) {
-    try {
-      const transactions = await prisma.transaction.findMany({
-        skip: offset,
-        take: limit,
-        orderBy: { timestamp: 'desc' }
-      });
-  
-      const total = await this.getRealTransactionCount();
-  
-      return {
-        transactions: transactions.map(tx => ({
-          ...tx,
-          timestamp: tx.timestamp.toISOString(),
-          amount: parseFloat(tx.amount.toString())
-        })),
-        total
-      };
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-      throw error;
-    }
+  // In your tokenMetricsService.js or database.js
+async getTransactions(limit = 1000, offset = 0) {
+  try {
+    const transactions = await prisma.transaction.findMany({
+      skip: offset,
+      take: limit,
+      orderBy: { timestamp: 'desc' }
+    });
+
+    const total = await this.getRealTransactionCount();
+
+    return {
+      transactions: transactions.map(tx => ({
+        ...tx,
+        timestamp: new Date(tx.timestamp).toISOString(),
+        amount: parseFloat(tx.amount.toString())
+      })),
+      total
+    };
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    throw error;
   }
+}
 
   async deduplicateTransactions() {
     try {
