@@ -61,6 +61,8 @@ const Universe = () => {
   const allTransactionsRef = useRef(new Set());
   const galaxyPositionsRef = useRef(new Map());
 
+
+
  
 // Galaxy Position Calculator
   const calculateGalaxyPosition = useCallback((index, total) => {
@@ -416,6 +418,25 @@ useEffect(() => {
     console.log('Transaction processed:', newTransaction.hash);
   }, [solitaryPlanets, groupTransactionsIntoGalaxies]);
 
+  const transactionProcessor = useMemo(() => {
+    let processingQueue = [];
+    let isProcessing = false;
+    
+    return {
+      addTransaction: (transaction) => {
+        processingQueue.push(transaction);
+        if (!isProcessing) {
+          isProcessing = true;
+          setTimeout(() => {
+            const batch = processingQueue.splice(0, 50);
+            batch.forEach(tx => handleNewTransaction(tx));
+            isProcessing = false;
+          }, 100);
+        }
+      }
+    };
+  }, [handleNewTransaction]);
+
   useEffect(() => {
     console.log('Establishing WebSocket connection...');
     const ws = new WebSocket(WS_URL);
@@ -432,14 +453,13 @@ useEffect(() => {
         
         if (message.type === 'initial') {
           if (galaxies.length === 0 && solitaryPlanets.length === 0) {
-            console.log('Processing initial transactions:', message.data.length);
             const { galaxies: newGalaxies, solitaryPlanets: newPlanets } = 
               groupTransactionsIntoGalaxies(message.data);
             setGalaxies(newGalaxies);
             setSolitaryPlanets(newPlanets);
           }
         } else if (message.type === 'update') {
-          handleNewTransaction(message.data);
+          transactionProcessor.addTransaction(message.data);
         }
       } catch (error) {
         console.error('Error processing WebSocket message:', error);
@@ -469,7 +489,7 @@ useEffect(() => {
         ws.close(1000, 'Component unmounting');
       }
     };
-  }, []); // Empty dependency array - only run on mount
+  }, [transactionProcessor]); // Empty dependency array - only run on mount
 
   useEffect(() => {
     const totalTransactions = galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
