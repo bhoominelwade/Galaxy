@@ -57,7 +57,13 @@ const checkNewTransactions = async () => {
         
         for (const tx of newTransactions) {
           sentTransactions.add(tx.hash);
-          await broadcastUpdate(tx);
+          // Make sure timestamp is properly formatted before broadcasting
+          const formattedTx = {
+            ...tx,
+            timestamp: new Date(tx.timestamp).toISOString(),
+            amount: parseFloat(tx.amount.toString())
+          };
+          await broadcastUpdate(formattedTx);
         }
       }
     }
@@ -101,14 +107,21 @@ const broadcastUpdate = async (transaction) => {
   try {
     const total = await tokenMetricsService.getRealTransactionCount();
     
+    // Ensure timestamp is properly formatted
+    const formattedTransaction = {
+      ...transaction,
+      timestamp: new Date(transaction.timestamp).toISOString(),
+      amount: parseFloat(transaction.amount.toString())
+    };
+    
     const message = JSON.stringify({
       type: 'update',
-      data: transaction,
+      data: formattedTransaction,
       total: total
     });
 
     for (const client of clients) {
-      if (client.readyState === client.OPEN) {
+      if (client.readyState === WebSocket.OPEN) {
         try {
           client.send(message);
         } catch (err) {

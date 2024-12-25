@@ -25,6 +25,7 @@ const TARGET_GALAXY_AMOUNT = 6000;
 const MAX_GALAXY_AMOUNT = 7000;
 
 
+
 const Universe = () => {
 
   // State Management
@@ -47,6 +48,8 @@ const Universe = () => {
   const [universeRevealActive, setUniverseRevealActive] = useState(false);
   const [statusInfo, setStatusInfo] = useState('');
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [wsReconnectAttempt, setWsReconnectAttempt] = useState(0);
+  const reconnectTimeoutRef = useRef(null);
 
   // Refs
   const mainCameraRef = useRef();
@@ -101,8 +104,12 @@ const Universe = () => {
       return;
     }
   
-    setSelectedGalaxy(galaxy);
-    //setStatusInfo(`Viewing Galaxy with ${galaxy.transactions.length} planets`);
+    // First set a loading state with just a few planets
+    const initialGalaxy = {
+      ...galaxy,
+      transactions: galaxy.transactions.slice(0, 15) // Start with fewer planets for smooth transition
+    };
+    setSelectedGalaxy(initialGalaxy);
     
     const camera = mainCameraRef.current;
     const controls = controlsRef.current;
@@ -110,7 +117,7 @@ const Universe = () => {
     const startTarget = controls.target.clone();
     const duration = 2000;
     const startTime = Date.now();
-
+  
     // Side view position (more to the side and slightly elevated)
     const finalPosition = new THREE.Vector3(50, 15, 0);
     const finalTarget = new THREE.Vector3(0, 0, 0);
@@ -142,9 +149,37 @@ const Universe = () => {
       
       if (progress < 1) {
         requestAnimationFrame(zoomAnimation);
+      } else {
+        // Animation complete - now progressively add remaining planets
+        loadRemainingPlanets();
       }
     };
     
+    const loadRemainingPlanets = () => {
+      let currentCount = 15;
+      const batchSize = 5; // Add 5 planets at a time
+      const totalPlanets = galaxy.transactions.length;
+      
+      const addNextBatch = () => {
+        if (currentCount >= totalPlanets) return;
+        
+        const nextBatch = Math.min(currentCount + batchSize, totalPlanets);
+        setSelectedGalaxy(prev => ({
+          ...galaxy,
+          transactions: galaxy.transactions.slice(0, nextBatch)
+        }));
+        
+        currentCount = nextBatch;
+        
+        // Schedule next batch
+        setTimeout(() => requestAnimationFrame(addNextBatch), 50);
+      };
+      
+      // Start adding planets
+      requestAnimationFrame(addNextBatch);
+    };
+    
+    // Start the animation
     zoomAnimation();
   }, [galaxies, calculateGalaxyPosition]);
 
@@ -354,40 +389,41 @@ useEffect(() => {
 
   // Add smart galaxy management
   const handleNewTransaction = useCallback((newTransaction) => {
-    // Add to processedTransactions if not already there
-    if (!processedTransactions.current.has(newTransaction.hash)) {
-      processedTransactions.current.add(newTransaction);
-      
-      // Add to allTransactionsRef if not already there
-      if (!allTransactionsRef.current.has(newTransaction.hash)) {
-        allTransactionsRef.current.add(newTransaction.hash);
-        
-        // Get all existing transactions plus the new one
-        const existingTransactions = galaxies.flatMap(g => g.transactions);
-        const allTransactions = [...existingTransactions, ...solitaryPlanets, newTransaction];
-        
-        // Regroup all transactions
-        const { galaxies: newGalaxies, solitaryPlanets: newSolitaryPlanets } = 
-          groupTransactionsIntoGalaxies(allTransactions);
-        
-        // Update state with all transactions
-        setGalaxies(newGalaxies);
-        setSolitaryPlanets(newSolitaryPlanets);
-        
-        console.log('Updated total transactions:', 
-          newGalaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
-          newSolitaryPlanets.length
-        );
-      }
+    console.log('Processing new transaction:', newTransaction.hash);
+    
+    // Don't process if already seen
+    if (processedTransactions.current.has(newTransaction.hash)) {
+      console.log('Transaction already processed:', newTransaction.hash);
+      return;
     }
-  }, [galaxies, solitaryPlanets, groupTransactionsIntoGalaxies]);
+    
+    processedTransactions.current.add(newTransaction.hash);
+    
+    // Update state
+    setGalaxies(prevGalaxies => {
+      const existingTransactions = prevGalaxies.flatMap(g => g.transactions);
+      const allTransactions = [...existingTransactions, ...solitaryPlanets, newTransaction];
+      
+      const { galaxies: newGalaxies, solitaryPlanets: newSolitaryPlanets } = 
+        groupTransactionsIntoGalaxies(allTransactions);
+      
+      // Update solitary planets
+      setSolitaryPlanets(newSolitaryPlanets);
+      
+      return newGalaxies;
+    });
+    
+    console.log('Transaction processed:', newTransaction.hash);
+  }, [solitaryPlanets, groupTransactionsIntoGalaxies]);
 
   useEffect(() => {
+    console.log('Establishing WebSocket connection...');
     const ws = new WebSocket(WS_URL);
     
     ws.onopen = () => {
       console.log('WebSocket connected');
       setWsConnected(true);
+      ws.send(JSON.stringify({ type: 'requestInitial' }));
     };
   
     ws.onmessage = (event) => {
@@ -395,38 +431,45 @@ useEffect(() => {
         const message = JSON.parse(event.data);
         
         if (message.type === 'initial') {
-          // Ignore initial message if we already have transactions
           if (galaxies.length === 0 && solitaryPlanets.length === 0) {
-            const transactions = message.data;
-            transactions.forEach(tx => {
-              if (!processedTransactions.current.has(tx.hash)) {
-                processedTransactions.current.add(tx);
-                allTransactionsRef.current.add(tx.hash);
-              }
-            });
-            
+            console.log('Processing initial transactions:', message.data.length);
             const { galaxies: newGalaxies, solitaryPlanets: newPlanets } = 
-              groupTransactionsIntoGalaxies(transactions);
-            
+              groupTransactionsIntoGalaxies(message.data);
             setGalaxies(newGalaxies);
             setSolitaryPlanets(newPlanets);
           }
-        } else if (message.type === 'update' && initialLoadComplete) {
-          const tx = message.data;
-          handleNewTransaction(tx);
+        } else if (message.type === 'update') {
+          handleNewTransaction(message.data);
         }
       } catch (error) {
         console.error('Error processing WebSocket message:', error);
       }
     };
   
-    wsRef.current = ws;
-    return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+  
+    ws.onclose = (event) => {
+      if (event.code !== 1000) {
+        console.log('WebSocket disconnected unexpectedly, attempting to reconnect...');
+        setWsConnected(false);
+        // Attempt to reconnect after 5 seconds
+        setTimeout(() => {
+          wsRef.current = new WebSocket(WS_URL);
+        }, 5000);
       }
     };
-  }, [handleNewTransaction, initialLoadComplete, galaxies, solitaryPlanets]);
+  
+    wsRef.current = ws;
+  
+    // Cleanup function
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, 'Component unmounting');
+      }
+    };
+  }, []); // Empty dependency array - only run on mount
 
   useEffect(() => {
     const totalTransactions = galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
@@ -582,60 +625,69 @@ useEffect(() => {
         let allTransactions = [];
         let hasMore = true;
         let total = 0;
-    
+      
         // First get the total count
-        const initialResponse = await fetch(`/api/transactions?offset=0&limit=1`);
-        const initialData = await initialResponse.json();
-        total = initialData.total;
-        console.log(`Total transactions to load: ${total}`);
-    
+        try {
+          const initialResponse = await fetch('http://localhost:3000/api/transactions?offset=0&limit=1');
+          if (!initialResponse.ok) {
+            throw new Error(`HTTP error! status: ${initialResponse.status}`);
+          }
+          const initialData = await initialResponse.json();
+          total = initialData.total;
+          console.log(`Total transactions to load: ${total}`);
+        } catch (error) {
+          console.error('Error fetching initial count:', error);
+          setLoading(false);
+          return;
+        }
+      
         // Then fetch all transactions in batches
         while (offset < total) {
-          const response = await fetch(
-  `/api/transactions?offset=${offset}&limit=1000`
-);
-          const data = await response.json();
-          
-          if (!data.transactions || !Array.isArray(data.transactions)) {
-            throw new Error("Received invalid data format");
+          try {
+            const response = await fetch(
+              `http://localhost:3000/api/transactions?offset=${offset}&limit=1000`
+            );
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            
+            if (!data.transactions || !Array.isArray(data.transactions)) {
+              throw new Error("Received invalid data format");
+            }
+      
+            allTransactions = [...allTransactions, ...data.transactions];
+            console.log(`Loaded ${allTransactions.length}/${total} transactions`);
+            
+            // Do not update state during batch loading to improve performance
+            offset += data.transactions.length;
+            
+            // Small delay between batches
+            await new Promise(resolve => setTimeout(resolve, 50));
+          } catch (error) {
+            console.error('Error fetching batch:', error);
+            break;
           }
-    
-          allTransactions = [...allTransactions, ...data.transactions];
-          
-          // Log progress
-          console.log(`Loaded ${allTransactions.length}/${total} transactions`);
-          
-          // Update state to show progress
-          const { galaxies: galaxyGroups, solitaryPlanets: remainingPlanets } = 
-            groupTransactionsIntoGalaxies(allTransactions);
-          
-          setGalaxies(galaxyGroups);
-          setSolitaryPlanets(remainingPlanets);
-          
-          // Prepare for next batch
-          offset += data.transactions.length;
-          
-          // Add small delay between batches
-          await new Promise(resolve => setTimeout(resolve, 50));
         }
-    
-        // Process all transactions once loading is complete
+  
+        // Process all transactions at once after loading is complete
         const { galaxies: finalGalaxies, solitaryPlanets: finalPlanets } = 
           groupTransactionsIntoGalaxies(allTransactions);
         
+        // Update state only once at the end
         setGalaxies(finalGalaxies);
         setSolitaryPlanets(finalPlanets);
-        setLoading(false);
         setInitialLoadComplete(true);
-        
+        setLoading(false);
+  
         console.log(`Final load complete. Total transactions: ${allTransactions.length}`);
         
       } catch (error) {
-        console.error('Error:', error);
+        console.error('Error in fetchAndProcessTransactions:', error);
         setLoading(false);
       }
     };
-
+  
     fetchAndProcessTransactions();
   }, [groupTransactionsIntoGalaxies]);
 
@@ -1052,7 +1104,7 @@ useEffect(() => {
     />
   </button>
       )}
-      {loading && (
+      {loading && galaxies.length === 0 && (
   <div style={{
     position: 'absolute',
     top: '50%',
@@ -1064,12 +1116,16 @@ useEffect(() => {
     borderRadius: '10px',
     zIndex: 1000
   }}>
-    Loading Transactions: {
-      galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
-      solitaryPlanets.length
-    }
+    <div>Loading Initial Transactions...</div>
+    {galaxies.length > 0 && (
+      <div>
+        Processed: {
+          galaxies.reduce((sum, g) => sum + g.transactions.length, 0) + 
+          solitaryPlanets.length
+        }
+      </div>
+    )}
   </div>
-  
 )}
     </div>
   );
