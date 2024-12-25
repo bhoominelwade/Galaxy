@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 const AudioManager = ({ hyperspaceActive, isMapExpanded, selectedGalaxy, onBackToUniverse }) => {
   const backgroundMusicRef = useRef(null);
   const hyperspaceSoundRef = useRef(null);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
