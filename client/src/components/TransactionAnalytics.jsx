@@ -53,7 +53,7 @@ const TransactionAnalytics = ({ galaxies = [], solitaryPlanets = [], handleTrans
         paddingBottom: '0.5rem'
       }}>
         <TrendingUp size={20} />
-        <span style={{ fontWeight: 'bold' }}>Universe Analytics</span>
+        <span style={{ fontWeight: 'bold' }}>Galactic Analytics</span>
       </div>
 {/* New Planet Alert */}
       {newPlanet && (
@@ -86,7 +86,7 @@ const TransactionAnalytics = ({ galaxies = [], solitaryPlanets = [], handleTrans
         borderRadius: '0.25rem'
       }}>
         <div>
-          <div style={{ opacity: 0.7, fontSize: '0.8em' }}>Galaxies</div>
+          <div style={{ opacity: 0.7, fontSize: '0.8em' }}>Star Systems</div>
           <div style={{ fontSize: '1.2em' }}>{galaxies.length}</div>
         </div>
         <div>

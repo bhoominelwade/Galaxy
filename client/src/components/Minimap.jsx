@@ -1,31 +1,81 @@
 // MapNavigation.js
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Stars } from '@react-three/drei';
+import * as THREE from 'three';
 import '../styles/MapNavigation.css';
 
-const MinimapDot = ({ position, size = 1, color = '#ffffff', onClick }) => (
+const MinimapDot = React.memo(({ position, size = 1, color = '#ffffff', onClick }) => (
   <mesh position={position} onClick={onClick}>
     <sphereGeometry args={[size, 8, 8]} />
     <meshBasicMaterial color={color} transparent opacity={0.8} />
     <pointLight distance={5} intensity={0.5} color={color} />
   </mesh>
-);
+));
 
-const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalaxy, controlsRef }) => {
-  const { scene, raycaster } = useThree();
-  const positionMarker = useRef();
+const PositionMarker = React.memo(({ mainCamera }) => {
+  const markerRef = useRef();
+  const materialRef = useRef(new THREE.MeshBasicMaterial({
+    color: 0xff0000,  // Pure bright red
+    transparent: true,
+    opacity: 1,
+    depthTest: false
+  }));
   
   useFrame(() => {
-    if (positionMarker.current && mainCamera) {
+    if (markerRef.current && mainCamera) {
       const scaleFactor = 0.1;
-      positionMarker.current.position.set(
+      markerRef.current.position.set(
         mainCamera.position.x * scaleFactor,
         0.5,
         mainCamera.position.z * scaleFactor
       );
     }
   });
+
+  return (
+    <group ref={markerRef}>
+      <mesh>
+        <cylinderGeometry args={[3.5, 3.5, 1.5, 32]} />
+        <primitive object={materialRef.current} attach="material" />
+      </mesh>
+
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[3.6, 4.2, 32]} />
+        <meshBasicMaterial 
+          color="#ff3333"
+          transparent
+          opacity={0.6}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[3.2, 3.4, 32]} />
+        <meshBasicMaterial 
+          color="#ff0000"
+          transparent
+          opacity={0.8}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      <mesh position={[0, -1.5, 0]} rotation={[0, 0, Math.PI]}>
+        <coneGeometry args={[2, 3, 32]} />
+        <primitive object={materialRef.current} attach="material" />
+      </mesh>
+
+      <pointLight distance={20} intensity={4} color="#ff0000" position={[0, 2, 0]} />
+      <pointLight distance={15} intensity={3} color="#ff3333" position={[0, -2, 0]} />
+      
+      {/* Added extra glow lights */}
+      <pointLight distance={25} intensity={2} color="#ff6666" position={[0, 0, 0]} />
+    </group>
+  );
+});
+
+const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalaxy, controlsRef }) => {
+  const { scene, raycaster } = useThree();
 
   const handleClick = useCallback((event) => {
     const intersects = raycaster.intersectObjects(scene.children, true);
@@ -38,7 +88,6 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
         point.z * scaleFactor
       ];
       
-      // Integrated navigation logic
       if (mainCamera && controlsRef.current) {
         const duration = 1000;
         const startPosition = {
@@ -46,7 +95,6 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
           y: mainCamera.position.y,
           z: mainCamera.position.z
         };
-        const startTarget = controlsRef.current.target.clone();
         const startTime = Date.now();
 
         const animate = () => {
@@ -57,14 +105,14 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
           
           mainCamera.position.set(
             startPosition.x + (worldPosition[0] - startPosition.x) * eased,
-            startPosition.y + (worldPosition[0] - startPosition.y) * eased,
-            startPosition.z + (worldPosition[0] - startPosition.z) * eased
+            startPosition.y + (worldPosition[1] - startPosition.y) * eased,
+            startPosition.z + (worldPosition[2] - startPosition.z) * eased
           );
           
           controlsRef.current.target.set(
-            0,
             worldPosition[0],
-            worldPosition[0]
+            0,
+            worldPosition[2]
           );
           
           controlsRef.current.update();
@@ -81,36 +129,31 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
     }
   }, [raycaster, scene, onNavigate, mainCamera, controlsRef]);
 
+  const galaxyMarkers = useMemo(() => (
+    galaxyPositions.map((pos, index) => (
+      <MinimapDot
+        key={index}
+        position={[pos[0] * 0.1, 0, pos[2] * 0.1]}
+        size={selectedGalaxy === index ? 1.8 : 1.2}
+        color={selectedGalaxy === index ? '#00ffff' : '#ffffff'}
+      />
+    ))
+  ), [galaxyPositions, selectedGalaxy]);
+
   return (
     <>
-      <ambientLight intensity={0.5} />
+      <ambientLight intensity={0.3} />
       <Stars 
         radius={100}
         depth={50}
-        count={1000}
+        count={500}
         factor={2}
         saturation={0}
         fade={true}
-        speed={0.5}
+        speed={0.2}
       />
-      <mesh ref={positionMarker}>
-        <sphereGeometry args={[1.5, 16, 16]} />
-        <meshBasicMaterial 
-          color="#ff4444" 
-          transparent 
-          opacity={0.8}
-          depthTest={false}
-        />
-        <pointLight distance={10} intensity={1} color="#ff4444" />
-      </mesh>
-      {galaxyPositions.map((pos, index) => (
-        <MinimapDot
-          key={index}
-          position={[pos[0] * 0.1, 0, pos[2] * 0.1]}
-          size={selectedGalaxy === index ? 1.8 : 1.2}
-          color={selectedGalaxy === index ? '#00ffff' : '#ffffff'}
-        />
-      ))}
+      <PositionMarker mainCamera={mainCamera} />
+      {galaxyMarkers}
       <mesh rotation={[-Math.PI / 2, 0, 0]} onClick={handleClick}>
         <planeGeometry args={[1000, 1000]} />
         <meshBasicMaterial visible={false} />

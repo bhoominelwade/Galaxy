@@ -16,13 +16,13 @@ import WebGL from './WebGL'
 
 
 // Constants
-const WS_URL = window.location.protocol === 'https:' 
+/* const WS_URL = window.location.protocol === 'https:' 
   ? `wss://${window.location.host}`
-  : `ws://${window.location.host}`; 
-// const WS_URL = 'ws://localhost:3000';
-const MAX_PLANETS_PER_GALAXY = 40;
+  : `ws://${window.location.host}`; */
+const WS_URL = 'ws://localhost:3000';
 const TARGET_GALAXY_AMOUNT = 6000;
 const MAX_GALAXY_AMOUNT = 7000;
+const PLANETS_PER_GALAXY = 10;
 
 
 
@@ -60,6 +60,8 @@ const Universe = () => {
   const wheelSpeed = useRef(1);
   const allTransactionsRef = useRef(new Set());
   const galaxyPositionsRef = useRef(new Map());
+
+
 
  
 // Galaxy Position Calculator
@@ -104,10 +106,10 @@ const Universe = () => {
       return;
     }
   
-    // First set a loading state with just a few planets
+    
     const initialGalaxy = {
       ...galaxy,
-      transactions: galaxy.transactions.slice(0, 15) // Start with fewer planets for smooth transition
+      transactions: galaxy.transactions.slice(0, 15) 
     };
     setSelectedGalaxy(initialGalaxy);
     
@@ -332,11 +334,6 @@ useEffect(() => {
       return { galaxies: [], solitaryPlanets: [] };
     }
 
-    const MAX_PLANETS_PER_GALAXY = 40; // Maximum planets per galaxy
-    const TARGET_GALAXY_AMOUNT = 6000; // Keep transaction amount limit
-    const MAX_GALAXY_AMOUNT = 7000; // Keep max amount limit
-
-    // First deduplicate transactions based on hash
     const uniqueTransactions = Array.from(
       new Map(transactions.map(tx => [tx.hash, tx])).values()
     );
@@ -346,44 +343,37 @@ useEffect(() => {
     let currentGalaxy = [];
     let currentSum = 0;
     
-    // First separate out the large solo planets (> MAX_GALAXY_AMOUNT)
-    const soloTransactions = sortedTransactions.filter(tx => tx.amount > MAX_GALAXY_AMOUNT);
-    const galaxyTransactions = sortedTransactions.filter(tx => tx.amount <= MAX_GALAXY_AMOUNT);
-    
-    // Process remaining transactions into galaxies with both amount and count limits
-    for (const tx of galaxyTransactions) {
-      // Check both amount limit and planet count limit
-      if (currentSum + tx.amount <= MAX_GALAXY_AMOUNT && currentGalaxy.length < MAX_PLANETS_PER_GALAXY) {
-        currentGalaxy.push(tx);
-        currentSum += tx.amount;
-      } else {
-        // Create new galaxy if either limit is reached
-        if (currentGalaxy.length > 0) {
-          galaxies.push({
-            transactions: currentGalaxy,
-            totalAmount: currentSum
-          });
-          console.log(`Created galaxy with ${currentGalaxy.length} planets and ${currentSum} total amount`);
-        }
-        currentGalaxy = [tx];
-        currentSum = tx.amount;
+    for (const tx of sortedTransactions) {
+      currentGalaxy.push(tx);
+      currentSum += tx.amount;
+      
+      if (currentGalaxy.length >= PLANETS_PER_GALAXY) {
+        galaxies.push({
+          transactions: currentGalaxy,
+          totalAmount: currentSum
+        });
+        currentGalaxy = [];
+        currentSum = 0;
       }
     }
-    
-    // Add the last galaxy if it has any transactions
+
     if (currentGalaxy.length > 0) {
-      galaxies.push({
-        transactions: currentGalaxy,
-        totalAmount: currentSum
-      });
-      console.log(`Created final galaxy with ${currentGalaxy.length} planets and ${currentSum} total amount`);
+      if (currentGalaxy.length >= 13) {
+        galaxies.push({
+          transactions: currentGalaxy,
+          totalAmount: currentSum
+        });
+      } else {
+        currentGalaxy.forEach((tx, index) => {
+          const targetGalaxy = galaxies[index % galaxies.length];
+          targetGalaxy.transactions.push(tx);
+          targetGalaxy.totalAmount += tx.amount;
+        });
+      }
     }
 
-    console.log(`Total galaxies created: ${galaxies.length}`);
-    console.log(`Solitary planets: ${soloTransactions.length}`);
-    
-    return { galaxies, solitaryPlanets: soloTransactions };
-}, []);
+    return { galaxies, solitaryPlanets: [] };
+  }, []);
  
 
 
@@ -872,17 +862,26 @@ useEffect(() => {
     />
   
   <div style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 1300,
-          zIndex: 10
-        }}>
-          <TransactionAnalytics 
-  galaxies={galaxies}
-  solitaryPlanets={solitaryPlanets}
-  handleTransactionHighlight={handleTransactionHighlight}
-/>
-        </div>
+  position: 'fixed',
+  bottom: 0,
+  right: 200, // Changed from left: 1300 to right: 0
+  zIndex: 10,
+  maxWidth: '100%', // Ensure it doesn't overflow on smaller screens
+  width: 'auto', // Let it take natural width
+  padding: '20px', // Add some padding from screen edge
+  display: 'flex',
+  justifyContent: 'flex-end', // Align to the right
+  '@media (max-width: 768px)': { // Add responsive behavior for smaller screens
+    width: '100%', // Full width on mobile
+    padding: '10px' // Smaller padding on mobile
+  }
+}}>
+  <TransactionAnalytics 
+    galaxies={galaxies}
+    solitaryPlanets={solitaryPlanets}
+    handleTransactionHighlight={handleTransactionHighlight}
+  />
+</div>
   
         {/* Main Canvas */}
         <Canvas 
