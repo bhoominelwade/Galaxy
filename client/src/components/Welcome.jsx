@@ -1,16 +1,18 @@
+// Welcome.jsx
 import React from 'react';
-import { X, MousePointer2, Move, RotateCcw, Search, Filter, Map } from 'lucide-react';
-import '../styles/welcome.css';
+import { X } from 'lucide-react';
+import './welcome.css';
 
 const Welcome = ({ onClose }) => {
   return (
     <div className="modal-overlay">
       <div className="modal-wrapper">
+        
+        
+        <div className="modal-content">
         <button onClick={onClose} className="close-btn">
           <X size={20} />
         </button>
-        
-        <div className="modal-content">
           <div className="header">
             <h1>Galactic Explorer</h1>
             <p>Traverse the boundaries of space and time</p>
@@ -24,8 +26,10 @@ const Welcome = ({ onClose }) => {
                   <path d="M2 8h20" />
                 </svg>
               </div>
-              <h3>Pan Through Space</h3>
-              <p>Explore galaxies with left-click</p>
+              <div className="feature-text">
+                <h3>Pan Through Space</h3>
+                <p>Explore galaxies with left-click</p>
+              </div>
             </div>
 
             <div className="feature-box">
@@ -34,8 +38,10 @@ const Welcome = ({ onClose }) => {
                   <path d="M12 19V5M5 12l7-7 7 7"/>
                 </svg>
               </div>
-              <h3>Quantum Zoom</h3>
-              <p>Dive deeper with mouse wheel</p>
+              <div className="feature-text">
+                <h3>Quantum Zoom</h3>
+                <p>Dive deeper with mouse wheel</p>
+              </div>
             </div>
 
             <div className="feature-box">
@@ -45,8 +51,10 @@ const Welcome = ({ onClose }) => {
                   <path d="M12 8c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4"/>
                 </svg>
               </div>
-              <h3>Celestial Rotation</h3>
-              <p>Orbit planets with right-click</p>
+              <div className="feature-text">
+                <h3>Celestial Rotation</h3>
+                <p>Orbit planets with right-click</p>
+              </div>
             </div>
 
             <div className="feature-box">
@@ -56,8 +64,10 @@ const Welcome = ({ onClose }) => {
                   <path d="m21 21-4.35-4.35"/>
                 </svg>
               </div>
-              <h3>Astral Search</h3>
-              <p>Find cosmic paths instantly with wallet search</p>
+              <div className="feature-text">
+                <h3>Astral Search</h3>
+                <p>Find cosmic paths instantly with wallet search</p>
+              </div>
             </div>
 
             <div className="feature-box">
@@ -66,8 +76,10 @@ const Welcome = ({ onClose }) => {
                   <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                 </svg>
               </div>
-              <h3>Stellar Highlight</h3>
-              <p>Watch selected transaction planets shine</p>
+              <div className="feature-text">
+                <h3>Stellar Highlight</h3>
+                <p>Watch selected transaction planets shine</p>
+              </div>
             </div>
 
             <div className="feature-box">
@@ -77,8 +89,10 @@ const Welcome = ({ onClose }) => {
                   <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                 </svg>
               </div>
-              <h3>Universal Atlas</h3>
-              <p>Chart your cosmic journey</p>
+              <div className="feature-text">
+                <h3>Universal Atlas</h3>
+                <p>Chart your cosmic journey</p>
+              </div>
             </div>
           </div>
 

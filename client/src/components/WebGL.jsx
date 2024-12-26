@@ -1,4 +1,3 @@
-// Enhanced WebGL handler with performance monitoring
 import { useState, useEffect, useCallback } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -7,37 +6,35 @@ const WebGL = () => {
   const { gl, invalidate, scene, camera } = useThree();
   const [lastFrameTime, setLastFrameTime] = useState(0);
   const [frameCount, setFrameCount] = useState(0);
+  const [detailLevel, setDetailLevel] = useState('high');
 
-  // Performance monitoring
   const checkPerformance = useCallback(() => {
     const currentTime = performance.now();
     if (lastFrameTime) {
       const delta = currentTime - lastFrameTime;
-      if (delta > 50) { // Frame took longer than 20fps
+      if (delta > 50) {
         console.warn('Performance warning: Frame time:', delta.toFixed(2), 'ms');
-        // Reduce detail level if needed
-        scene.traverse((object) => {
-          if (object.geometry) {
-            object.geometry.dispose();
-          }
-        });
         
-        // Force garbage collection if available
-        if (typeof window.gc === 'function') {
-          window.gc();
+        // Gradually reduce detail instead of disposing geometry
+        if (detailLevel === 'high') {
+          setDetailLevel('medium');
+        } else if (detailLevel === 'medium') {
+          setDetailLevel('low');
         }
+        
+        // Emit detail level change event
+        window.dispatchEvent(new CustomEvent('detailLevelChange', {
+          detail: { level: detailLevel }
+        }));
       }
     }
     setLastFrameTime(currentTime);
     setFrameCount(prev => prev + 1);
-  }, [lastFrameTime, scene]);
+  }, [lastFrameTime, detailLevel]);
 
-  // Enhanced context loss handler
   const handleContextLost = useCallback((event) => {
     event.preventDefault();
     console.warn('WebGL context lost');
-    
-    // Notify any active WebSocket connections to pause updates
     if (window.wsConnection) {
       window.wsConnection.send(JSON.stringify({
         type: 'pause',
@@ -46,27 +43,19 @@ const WebGL = () => {
     }
   }, []);
 
-  // Enhanced context restoration
   const handleContextRestored = useCallback(() => {
     console.log('WebGL context restored');
-    
     if (gl) {
-      // Reinitialize renderer with optimized settings
       gl.setSize(gl.domElement.width, gl.domElement.height);
-      gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Limit pixel ratio
-      gl.shadowMap.enabled = true;
-      gl.shadowMap.type = THREE.PCFSoftShadowMap;
-      
-      // Enable performance optimizations
+      gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); // Further reduced pixel ratio
+      gl.shadowMap.enabled = false; // Disable shadows for performance
       gl.powerPreference = 'high-performance';
-      gl.antialias = false; // Disable antialiasing if performance is critical
+      gl.antialias = false;
       
-      // Resume WebSocket updates
-      if (window.wsConnection) {
-        window.wsConnection.send(JSON.stringify({
-          type: 'resume',
-          reason: 'context_restored'
-        }));
+      // Enable texture compression
+      const ext = gl.getExtension('WEBGL_compressed_texture_s3tc');
+      if (ext) {
+        gl.compressedTexImage2D = ext.compressedTexImage2D.bind(ext);
       }
       
       invalidate();
@@ -78,21 +67,33 @@ const WebGL = () => {
 
     const canvas = gl.domElement;
     
-    // Apply initial optimizations
-    gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    gl.shadowMap.enabled = true;
-    gl.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Initial optimizations
+    gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+    gl.shadowMap.enabled = false;
     gl.powerPreference = 'high-performance';
+    gl.antialias = false;
     
-    // Setup performance monitoring
+    // Enable frustum culling
+    scene.traverse((object) => {
+      if (object.isMesh) {
+        object.frustumCulled = true;
+      }
+    });
+
+    // Throttled animation frame
+    let lastRender = 0;
+    const minFrameTime = 1000 / 30; // Cap at 30 FPS
+    
     let animationFrameId;
-    const animate = () => {
-      checkPerformance();
+    const animate = (timestamp) => {
+      if (timestamp - lastRender >= minFrameTime) {
+        checkPerformance();
+        lastRender = timestamp;
+      }
       animationFrameId = requestAnimationFrame(animate);
     };
     animate();
 
-    // Event listeners
     canvas.addEventListener('webglcontextlost', handleContextLost, false);
     canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
 
@@ -101,16 +102,15 @@ const WebGL = () => {
       canvas.removeEventListener('webglcontextlost', handleContextLost);
       canvas.removeEventListener('webglcontextrestored', handleContextRestored);
     };
-  }, [gl, handleContextLost, handleContextRestored, checkPerformance]);
+  }, [gl, handleContextLost, handleContextRestored, checkPerformance, scene]);
 
   return null;
 };
 
-// Optimized transaction processing middleware
 export const createTransactionProcessor = (wsConnection) => {
   let processingQueue = [];
   let isProcessing = false;
-  const maxBatchSize = 50; // Process max 50 transactions at once
+  const maxBatchSize = 25; // Reduced batch size
   
   const processQueue = async () => {
     if (isProcessing || processingQueue.length === 0) return;
@@ -126,28 +126,25 @@ export const createTransactionProcessor = (wsConnection) => {
         }
       });
       
-      // Process unique transactions
-      const transactions = Array.from(uniqueTransactions.values());
       window.dispatchEvent(new CustomEvent('newTransactions', {
-        detail: { transactions }
+        detail: { transactions: Array.from(uniqueTransactions.values()) }
       }));
       
     } catch (error) {
       console.error('Error processing transaction batch:', error);
-      // Re-add failed transactions to queue
       processingQueue.unshift(...batch);
     }
     
     isProcessing = false;
     if (processingQueue.length > 0) {
-      setTimeout(processQueue, 100); // Process next batch after 100ms
+      setTimeout(processQueue, 200); // Increased delay between batches
     }
   };
   
   return {
     addTransaction: (transaction) => {
       processingQueue.push(transaction);
-      processQueue();
+      requestAnimationFrame(processQueue); // Use rAF for better timing
     },
     clearQueue: () => {
       processingQueue = [];

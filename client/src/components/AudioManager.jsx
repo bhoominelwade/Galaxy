@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 const AudioManager = ({ hyperspaceActive, isMapExpanded, selectedGalaxy, onBackToUniverse }) => {
   const backgroundMusicRef = useRef(null);
   const hyperspaceSoundRef = useRef(null);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
@@ -51,7 +51,7 @@ const AudioManager = ({ hyperspaceActive, isMapExpanded, selectedGalaxy, onBackT
         await backgroundMusicRef.current?.play();
       } catch (error) {
         console.error('Audio playback failed:', error);
-        setIsMuted(false);
+        setIsMuted(true);
       }
     }
   };
