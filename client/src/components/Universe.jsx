@@ -25,6 +25,7 @@ const TARGET_GALAXY_AMOUNT = 6000;
 const MAX_GALAXY_AMOUNT = 7000;
 const PLANETS_PER_GALAXY = 10;
 
+
 const UniverseUpdater = ({ universeOptimizer, mainCameraRef, setFps }) => {
   const frameCount = useRef(0);
   const lastTime = useRef(performance.now());
@@ -88,7 +89,22 @@ const Universe = () => {
   const allTransactionsRef = useRef(new Set());
   const galaxyPositionsRef = useRef(new Map());
 
-
+  const checkBounds = (position) => {
+    const universeRadius = selectedGalaxy ? 40 : 600;
+    const distance = Math.sqrt(position.x * position.x + position.z * position.z);
+    if (distance > universeRadius) {
+      const ratio = universeRadius / distance;
+      position.x *= ratio;
+      position.z *= ratio;
+    }
+    
+    // Limit vertical movement
+    const maxY = selectedGalaxy ? 30 : 300;
+    const minY = selectedGalaxy ? -30 : -300;
+    position.y = Math.max(minY, Math.min(maxY, position.y));
+    
+    return position;
+  };
 
  
 // Galaxy Position Calculator
@@ -275,46 +291,52 @@ useEffect(() => {
   console.log('Universe reveal active:', universeRevealActive);
 }, [universeRevealActive]);// Add galaxies to dependencies
 
-  const handleKeyDown = useCallback((e) => {
+const handleKeyDown = useCallback((e) => {
   if (!controlsRef.current || !mainCameraRef.current) return;
   
   const camera = mainCameraRef.current;
   const controls = controlsRef.current;
   const moveSpeed = 50;
   
+  const newPosition = camera.position.clone();
+  const newTarget = controls.target.clone();
+  
   switch(e.key) {
     case 'ArrowUp':
     case 'w':
-      camera.position.z -= moveSpeed;
-      controls.target.z -= moveSpeed;
+      newPosition.z -= moveSpeed;
+      newTarget.z -= moveSpeed;
       break;
     case 'ArrowDown':
     case 's':
-      camera.position.z += moveSpeed;
-      controls.target.z += moveSpeed;
+      newPosition.z += moveSpeed;
+      newTarget.z += moveSpeed;
       break;
     case 'ArrowLeft':
     case 'a':
-      camera.position.x -= moveSpeed;
-      controls.target.x -= moveSpeed;
+      newPosition.x -= moveSpeed;
+      newTarget.x -= moveSpeed;
       break;
     case 'ArrowRight':
     case 'd':
-      camera.position.x += moveSpeed;
-      controls.target.x += moveSpeed;
+      newPosition.x += moveSpeed;
+      newTarget.x += moveSpeed;
       break;
     case 'q':
-      camera.position.y += moveSpeed;
-      controls.target.y += moveSpeed;
+      newPosition.y += moveSpeed;
+      newTarget.y += moveSpeed;
       break;
     case 'e':
-      camera.position.y -= moveSpeed;
-      controls.target.y -= moveSpeed;
+      newPosition.y -= moveSpeed;
+      newTarget.y -= moveSpeed;
       break;
   }
   
+  // Check and apply bounds
+  camera.position.copy(checkBounds(newPosition));
+  controls.target.copy(checkBounds(newTarget));
   controls.update();
-}, []);
+}, [selectedGalaxy]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -861,43 +883,46 @@ useEffect(() => {
         isMapExpanded={isMapExpanded}
       />
   
-        <WalletSearch 
-      galaxies={galaxies}
-      solitaryPlanets={solitaryPlanets}
-      onTransactionSelect={(hash, galaxy) => {
-        setSearchResult(hash);
-        setSelectedGalaxy(galaxy);
-      }}
-      mainCameraRef={mainCameraRef}
-      controlsRef={controlsRef}
-      calculateGalaxyPosition={calculateGalaxyPosition}
-    />
-  
   <div style={{
   position: 'fixed',
+  top: '0px', // Align with minimap height
+  right: '0px',
+  zIndex: 1000,
+  width: 'auto',
+  display: 'flex',
+  justifyContent: 'flex-end',
+  alignItems: 'center',
+  '@media (max-width: 768px)': {
+    top: '30px' // Slightly adjust for mobile if needed
+  }
+}}>
+  <WalletSearch 
+    galaxies={galaxies}
+    solitaryPlanets={solitaryPlanets}
+    onTransactionSelect={(hash, galaxy) => {
+      setSearchResult(hash);
+      setSelectedGalaxy(galaxy);
+    }}
+    mainCameraRef={mainCameraRef}
+    controlsRef={controlsRef}
+    calculateGalaxyPosition={calculateGalaxyPosition}
+  />
+</div>
+
+<div style={{
+  position: 'fixed',
   bottom: 0,
-  ...(window.innerWidth <= 768 
-    ? {
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '100%',
-        maxWidth: '100%',
-        padding: '10px 20px', // Added horizontal padding
-      } 
-    : {
-        right: '20px',  // Right alignment for desktop
-        transform: 'none',
-        width: '400px',
-        padding: '20px',
-      }),
+  right: '20px',  // Always align to right
+  width: window.innerWidth <= 768 ? '100%' : '400px',
+  padding: window.innerWidth <= 768 ? '10px' : '20px',
   zIndex: 10,
   display: 'flex',
-  justifyContent: 'center',
+  justifyContent: 'flex-end', // Align content to right
   alignItems: 'center'
 }}>
   <div style={{ 
-    width: window.innerWidth <= 768 ? '100%' : 'auto',
-    maxWidth: window.innerWidth <= 768 ? 'none' : '400px'
+    width: window.innerWidth <= 768 ? 'auto' : '400px',
+    maxWidth: '100%'
   }}>
     <TransactionAnalytics 
       galaxies={galaxies}
