@@ -1,4 +1,3 @@
-// MapNavigation.js
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Stars } from '@react-three/drei';
@@ -16,7 +15,7 @@ const MinimapDot = React.memo(({ position, size = 1, color = '#ffffff', onClick 
 const PositionMarker = React.memo(({ mainCamera }) => {
   const markerRef = useRef();
   const materialRef = useRef(new THREE.MeshBasicMaterial({
-    color: 0xff0000,  // Pure bright red
+    color: 0xff0000,
     transparent: true,
     opacity: 1,
     depthTest: false
@@ -67,8 +66,6 @@ const PositionMarker = React.memo(({ mainCamera }) => {
 
       <pointLight distance={20} intensity={4} color="#ff0000" position={[0, 2, 0]} />
       <pointLight distance={15} intensity={3} color="#ff3333" position={[0, -2, 0]} />
-      
-      {/* Added extra glow lights */}
       <pointLight distance={25} intensity={2} color="#ff6666" position={[0, 0, 0]} />
     </group>
   );
@@ -82,39 +79,53 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
     if (intersects.length > 0) {
       const point = intersects[0].point;
       const scaleFactor = 10;
-      const worldPosition = [
-        point.x * scaleFactor,
-        mainCamera?.position.y || 50,
-        point.z * scaleFactor
-      ];
       
+      // Check if point is within universe bounds
+      const maxRadius = 96;
+      const distanceFromCenter = Math.sqrt(point.x * point.x + point.z * point.z);
+      
+      if (distanceFromCenter > maxRadius) {
+        return;
+      }
+  
       if (mainCamera && controlsRef.current) {
         const duration = 1000;
-        const startPosition = {
-          x: mainCamera.position.x,
-          y: mainCamera.position.y,
-          z: mainCamera.position.z
-        };
+        const startPosition = mainCamera.position.clone();
+        const startTarget = controlsRef.current.target.clone();
+        
+        // Calculate target world position
+        const targetPosition = new THREE.Vector3(
+          point.x * scaleFactor,
+          0,
+          point.z * scaleFactor
+        );
+  
+        // Keep camera height and distance
+        const currentHeight = mainCamera.position.y;
+        const currentDistance = new THREE.Vector3().subVectors(mainCamera.position, controlsRef.current.target).length();
+        
+        // Calculate new camera position
+        const angle = Math.atan2(
+          mainCamera.position.z - controlsRef.current.target.z,
+          mainCamera.position.x - controlsRef.current.target.x
+        );
+        
+        const worldPosition = new THREE.Vector3(
+          targetPosition.x + Math.cos(angle) * currentDistance,
+          currentHeight,
+          targetPosition.z + Math.sin(angle) * currentDistance
+        );
+  
         const startTime = Date.now();
-
+        
         const animate = () => {
           const now = Date.now();
           const elapsed = now - startTime;
           const progress = Math.min(elapsed / duration, 1);
           const eased = 1 - Math.pow(1 - progress, 3);
           
-          mainCamera.position.set(
-            startPosition.x + (worldPosition[0] - startPosition.x) * eased,
-            startPosition.y + (worldPosition[1] - startPosition.y) * eased,
-            startPosition.z + (worldPosition[2] - startPosition.z) * eased
-          );
-          
-          controlsRef.current.target.set(
-            worldPosition[0],
-            0,
-            worldPosition[2]
-          );
-          
+          mainCamera.position.lerpVectors(startPosition, worldPosition, eased);
+          controlsRef.current.target.lerpVectors(startTarget, targetPosition, eased);
           controlsRef.current.update();
           
           if (progress < 1) {
@@ -124,8 +135,6 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
         
         animate();
       }
-      
-      onNavigate(worldPosition);
     }
   }, [raycaster, scene, onNavigate, mainCamera, controlsRef]);
 
@@ -154,6 +163,7 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
       />
       <PositionMarker mainCamera={mainCamera} />
       {galaxyMarkers}
+      {/* This is the clickable plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} onClick={handleClick}>
         <planeGeometry args={[1000, 1000]} />
         <meshBasicMaterial visible={false} />
@@ -194,9 +204,12 @@ const MapNavigation = ({
             fov: 60,
             far: 5000,
             near: 0.1
-          }} 
+          }}
           onCreated={({ camera }) => {
             minimapCameraRef.current = camera;
+            // Add fixed orthographic bounds
+            camera.zoom = 0.8; // Adjust to show full universe
+            camera.updateProjectionMatrix();
           }}
         >
           <MinimapContent 
