@@ -96,6 +96,10 @@ const SpiralGalaxy = ({
      onClick={handleGalaxyClick}
      style={{ cursor: !isSelected ? 'pointer' : 'default' }}
    >
+     <mesh onClick={handleGalaxyClick}>
+    <sphereGeometry args={[FIXED_GALAXY_SIZE * 1.2, 16, 16]} />
+    <meshBasicMaterial visible={false} />
+  </mesh>
      {/* Core */}
      <mesh onClick={handleGalaxyClick}>
        <sphereGeometry args={[isSelected ? 2 : 0.8, 32, 32]} />
