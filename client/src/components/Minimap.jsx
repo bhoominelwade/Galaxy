@@ -93,27 +93,31 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
         const startPosition = mainCamera.position.clone();
         const startTarget = controlsRef.current.target.clone();
         
-        // Calculate target world position
-        const targetPosition = new THREE.Vector3(
+        // Direct world position calculation
+        const worldTarget = new THREE.Vector3(
           point.x * scaleFactor,
           0,
           point.z * scaleFactor
         );
   
-        // Keep camera height and distance
+        // Calculate camera offset while maintaining current height
         const currentHeight = mainCamera.position.y;
-        const currentDistance = new THREE.Vector3().subVectors(mainCamera.position, controlsRef.current.target).length();
-        
-        // Calculate new camera position
-        const angle = Math.atan2(
+        const horizontalDistance = Math.sqrt(
+          Math.pow(mainCamera.position.x - controlsRef.current.target.x, 2) +
+          Math.pow(mainCamera.position.z - controlsRef.current.target.z, 2)
+        );
+  
+        // Calculate camera angle in the XZ plane
+        const cameraAngle = Math.atan2(
           mainCamera.position.z - controlsRef.current.target.z,
           mainCamera.position.x - controlsRef.current.target.x
         );
-        
+  
+        // Calculate new camera position
         const worldPosition = new THREE.Vector3(
-          targetPosition.x + Math.cos(angle) * currentDistance,
+          worldTarget.x + Math.cos(cameraAngle) * horizontalDistance,
           currentHeight,
-          targetPosition.z + Math.sin(angle) * currentDistance
+          worldTarget.z + Math.sin(cameraAngle) * horizontalDistance
         );
   
         const startTime = Date.now();
@@ -125,7 +129,7 @@ const MinimapContent = ({ mainCamera, galaxyPositions, onNavigate, selectedGalax
           const eased = 1 - Math.pow(1 - progress, 3);
           
           mainCamera.position.lerpVectors(startPosition, worldPosition, eased);
-          controlsRef.current.target.lerpVectors(startTarget, targetPosition, eased);
+          controlsRef.current.target.lerpVectors(startTarget, worldTarget, eased);
           controlsRef.current.update();
           
           if (progress < 1) {
