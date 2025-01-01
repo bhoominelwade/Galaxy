@@ -10,20 +10,11 @@ const WalletSearch = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [searchType, setSearchType] = useState('wallet'); // 'wallet' or 'transaction'
   const [userTransactions, setUserTransactions] = useState([]);
   const [isWalletView, setIsWalletView] = useState(false);
   const [searchError, setSearchError] = useState('');
-
-  const handleFocus = () => {
-    setIsFocused(true);
-  };
-
-  const handleBlur = () => {
-    setIsFocused(false);
-  };
 
   const handleTransactionSearch = (hash) => {
     setSearchError('');
@@ -216,58 +207,37 @@ const WalletSearch = ({
     setIsHovered(false);
   };
 
-  const handleExpand = () => {
-    const newExpandedState = true;
-    setIsExpanded(newExpandedState);
-    onExpandChange?.(newExpandedState);
-  };
-
-  const handleClearSearch = () => {
-    setSearchInput('');
-    setUserTransactions([]);
-    setIsWalletView(false);
-    setSearchError('');
-    setIsExpanded(false);
-    onExpandChange?.(false);
-  };
-
   return (
     <div 
       style={{
-        position: 'absolute',
-        ...(window.innerWidth <= 768 ? {
-          top: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: isExpanded ? 'calc(100% - 40px)' : '55px', // Circle when collapsed
-          maxWidth: isExpanded ? '400px' : '55px',
-          display: 'flex',
-          justifyContent: isExpanded ? 'center' : 'flex-end',
-        } : {
-          top: '20px',
-          right: '20px',
-          width: isExpanded ? '400px' : '55px',
-        }),
-        zIndex: 1000,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#fff',
-        padding: '10px',
-        borderRadius: isExpanded ? '12px' : '50px',
-        border: `1px solid ${isHovered ? '#24D2FB' : 'rgba(255, 255, 255, 0.2)'}`,
-        transition: 'all 0.4s ease-in-out',
-        background: 'rgba(0, 0, 0, 0.3)',
-        backdropFilter: 'blur(4px)',
-        height: isExpanded ? 'auto' : '55px',
-        cursor: 'pointer',
-      }}
+  position: 'absolute',
+  top: '20px',
+  right: '20px', // Keep it at the right edge
+  zIndex: 1000,
+  display: 'inline-flex',
+  alignItems: 'center',
+  color: '#fff',
+  padding: '10px',
+  borderRadius: isExpanded ? '12px' : '50px',
+  border: `1px solid ${isHovered ? '#24D2FB' : 'rgba(255, 255, 255, 0.2)'}`,
+  transition: 'all 0.4s ease-in-out',
+  background: 'rgba(0, 0, 0, 0.3)',
+  backdropFilter: 'blur(4px)',
+  minWidth: isExpanded ? 'auto' : '55px',
+  width: isExpanded ? 'min(400px, calc(100vw - 100px))' : '55px', // Use min() to handle the width
+  maxWidth: '400px',
+  height: isExpanded ? 'auto' : '55px',
+  cursor: 'pointer',
+  '@media (max-width: 768px)': {
+    width: isExpanded ? 'calc(100vw - 100px)' : '55px', // Ensure it doesn't overlap with nav on mobile
+  }
+}}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {!isExpanded && (
         <button
-          onClick={handleExpand}
+          onClick={() => setIsExpanded(true)}
           style={{
             display: 'grid',
             placeItems: 'center',
@@ -300,8 +270,7 @@ const WalletSearch = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            gap: '10px',
-            width: '100%'
+            gap: '10px'
           }}>
             <div style={{
               display: 'flex',
@@ -324,8 +293,7 @@ const WalletSearch = ({
                   color: 'white',
                   outline: 'none',
                   fontSize: '14px',
-                  cursor: 'pointer',
-                  minWidth: '100px'
+                  cursor: 'pointer'
                 }}
               >
                 <option value="wallet">Wallet</option>
@@ -338,13 +306,11 @@ const WalletSearch = ({
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
                 placeholder={searchType === 'wallet' ? "Enter wallet address..." : "Enter transaction hash..."}
                 style={{
                   padding: '10px 15px',
                   background: 'rgba(0, 0, 0, 0.5)',
-                  border: `1px solid ${isFocused ? '#24D2FB' : 'rgba(255, 255, 255, 0.1)'}`,
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '8px',
                   color: 'white',
                   outline: 'none',
@@ -370,112 +336,103 @@ const WalletSearch = ({
                 borderRadius: '8px',
                 outline: 'none',
                 transition: 'all 0.3s ease',
-                flexShrink: 0,
               }}
             >
               <i className="ri-close-line" style={{ fontSize: '1.2em' }} />
             </button>
           </div>
 
-          {/* Results section - adjust position for mobile */}
-          {(searchError || (isWalletView && userTransactions.length > 0)) && (
+          {searchError && (
             <div style={{
-              position: window.innerWidth <= 768 ? 'fixed' : 'static',
-              top: window.innerWidth <= 768 ? '90px' : 'auto',
-              left: window.innerWidth <= 768 ? '20px' : 'auto',
-              right: window.innerWidth <= 768 ? '20px' : 'auto',
+              color: '#ff6b6b',
+              background: 'rgba(255, 77, 77, 0.1)',
+              padding: '10px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              border: '1px solid rgba(255, 77, 77, 0.2)'
+            }}>
+              {searchError}
+            </div>
+          )}
+
+          {isWalletView && userTransactions.length > 0 && (
+            <div style={{
               background: 'rgba(0, 0, 0, 0.5)',
               padding: '15px',
               borderRadius: '8px',
-              width: window.innerWidth <= 768 ? 'calc(100% - 40px)' : '100%',
+              width: '100%',
               maxHeight: '300px',
               backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              zIndex: 1001,
+              display: 'flex',
+              flexDirection: 'column',
+              fontSize: '13px',
+              border: '1px solid rgba(255, 255, 255, 0.1)'
             }}>
-              {/* Rest of the results content remains the same */}
-              {searchError && (
-                <div style={{
-                  color: '#ff6b6b',
-                  background: 'rgba(255, 77, 77, 0.1)',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  border: '1px solid rgba(255, 77, 77, 0.2)'
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '10px',
+                color: 'white',
+                padding: '0 6px',
+                fontSize: '12px'
+              }}>
+                <span>
+                  {searchType === 'wallet' 
+                    ? `Wallet: ${searchInput.slice(0, 8)}...`
+                    : 'Transaction Details'
+                  }
+                </span>
+                <span>{userTransactions.length} transaction{userTransactions.length !== 1 ? 's' : ''}</span>
+              </div>
+              
+              <div style={{
+                overflowY: 'auto',
+                maxHeight: '250px',
+                scrollbarWidth: 'thin',
+                scrollbarColor: 'rgba(36, 210, 251, 0.3) transparent',
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                borderRadius: '6px'
+              }}>
+                <table style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  color: 'white',
                 }}>
-                  {searchError}
-                </div>
-              )}
-
-              {isWalletView && userTransactions.length > 0 && (
-                <>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '10px',
-                    color: 'white',
-                    padding: '0 6px',
-                    fontSize: '12px'
+                  <thead style={{
+                    position: 'sticky',
+                    top: 0,
+                    background: 'rgba(0, 0, 0, 0.8)',
+                    zIndex: 1,
+                    fontSize: '11px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
                   }}>
-                    <span>
-                      {searchType === 'wallet' 
-                        ? `Wallet: ${searchInput.slice(0, 8)}...`
-                        : 'Transaction Details'
-                      }
-                    </span>
-                    <span>{userTransactions.length} transaction{userTransactions.length !== 1 ? 's' : ''}</span>
-                  </div>
-                  
-                  <div style={{
-                    overflowY: 'auto',
-                    maxHeight: '250px',
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: 'rgba(36, 210, 251, 0.3) transparent',
-                    border: '1px solid rgba(255, 255, 255, 0.05)',
-                    borderRadius: '6px'
-                  }}>
-                    <table style={{
-                      width: '100%',
-                      borderCollapse: 'collapse',
-                      color: 'white',
-                    }}>
-                      <thead style={{
-                        position: 'sticky',
-                        top: 0,
-                        background: 'rgba(0, 0, 0, 0.8)',
-                        zIndex: 1,
-                        fontSize: '11px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        <tr>
-                          <th style={{padding: '8px 12px', textAlign: 'left'}}>Transaction ID</th>
-                          <th style={{padding: '8px 12px', textAlign: 'right'}}>Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {userTransactions.map(tx => (
-                          <tr 
-                            key={tx.hash} 
-                            style={{
-                              borderTop: '1px solid rgba(255,255,255,0.05)',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s ease'
-                            }}
-                            onClick={() => handleTransactionHighlight(tx.hash)}
-                            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(36, 210, 251, 0.1)'}
-                            onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <td style={{padding: '8px 12px'}}>{tx.hash.slice(0,10)}...</td>
-                            <td style={{padding: '8px 12px', textAlign: 'right'}}>{tx.amount.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
+                    <tr>
+                      <th style={{padding: '8px 12px', textAlign: 'left'}}>Transaction ID</th>
+                      <th style={{padding: '8px 12px', textAlign: 'right'}}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userTransactions.map(tx => (
+                      <tr 
+                        key={tx.hash} 
+                        style={{
+                          borderTop: '1px solid rgba(255,255,255,0.05)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onClick={() => handleTransactionHighlight(tx.hash)}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(36, 210, 251, 0.1)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <td style={{padding: '8px 12px'}}>{tx.hash.slice(0,10)}...</td>
+                        <td style={{padding: '8px 12px', textAlign: 'right'}}>{tx.amount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
