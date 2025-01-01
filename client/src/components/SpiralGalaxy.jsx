@@ -38,6 +38,7 @@ const SpiralGalaxy = ({
  const groupRef = useRef();
  const [nameOpacity, setNameOpacity] = useState(NAME_OPACITY_BASE);
  const [isInitialized, setIsInitialized] = useState(false);
+ const [isHovered, setIsHovered] = useState(false);
  const [hoveredPlanet, setHoveredPlanet] = useState(null);
 
  const safeColorIndex = Math.abs(colorIndex) % GALAXY_COLORS.length;
@@ -65,113 +66,158 @@ const SpiralGalaxy = ({
  });
 
  const createMinimalGalaxy = () => {
-   const rings = [];
-   const baseRadius = FIXED_GALAXY_SIZE;
-   const coreColor = new THREE.Color(colorScheme.core).multiplyScalar(1.5);
+  const rings = [];
+  const baseRadius = FIXED_GALAXY_SIZE;
+  const coreColor = new THREE.Color(colorScheme.core).multiplyScalar(isHovered ? 4 : 1.5);  // Much brighter on hover
 
-   for (let i = 0; i < MINIMAL_RINGS; i++) {
-     const radius = ((i + 1) / MINIMAL_RINGS) * baseRadius;
-     const ringColor = new THREE.Color(colorScheme.arms[i % colorScheme.arms.length])
-       .multiplyScalar(1.2);
-     
-     rings.push({
-       radius,
-       color: ringColor,
-       glowColor: ringColor.clone().multiplyScalar(0.8)
-     });
-   }
-   
-   return rings;
- };
+  for (let i = 0; i < MINIMAL_RINGS; i++) {
+    const radius = ((i + 1) / MINIMAL_RINGS) * baseRadius;
+    const ringColor = new THREE.Color(colorScheme.arms[i % colorScheme.arms.length])
+      .multiplyScalar(isHovered ? 3 : 1.2);  // 3x brighter on hover
+    
+    rings.push({
+      radius,
+      color: ringColor,
+      glowColor: ringColor.clone().multiplyScalar(isHovered ? 2 : 0.8)  // Much stronger glow
+    });
+  }
+  
+  return rings;
+};
 
  const handleGalaxyClick = (e) => {
    e.stopPropagation();
    if (!isSelected) onClick();
  };
+ const hoverSound = useMemo(() => {
+  const audio = new Audio('./assets/Hoverr.mp3');
+  audio.volume = 0.3; // Adjust volume as needed
+  return audio;
+}, []);
 
- return (
-   <group 
-     ref={groupRef} 
-     position={position}
-     onClick={handleGalaxyClick}
-     style={{ cursor: !isSelected ? 'pointer' : 'default' }}
-   >
-     <mesh onClick={handleGalaxyClick}>
-    <sphereGeometry args={[FIXED_GALAXY_SIZE * 1.2, 16, 16]} />
-    <meshBasicMaterial visible={false} />
-  </mesh>
-     {/* Core */}
-     <mesh onClick={handleGalaxyClick}>
-       <sphereGeometry args={[isSelected ? 2 : 0.8, 32, 32]} />
-       <meshBasicMaterial 
-         color={colorScheme.core}
-         transparent
-         opacity={0.9}
-       />
-     </mesh>
-     
-     {/* Core glow */}
-     <mesh onClick={handleGalaxyClick}>
-       <sphereGeometry args={[isSelected ? 2.2 : 1, 32, 32]} />
-       <meshBasicMaterial
-         color={colorScheme.core}
-         transparent
-         opacity={0.4}
-         blending={THREE.AdditiveBlending}
-       />
-       <pointLight color={colorScheme.core} intensity={3} distance={50} decay={2} />
-     </mesh>
+// Modify the existing hover handler to play sound
+const handleHover = () => {
+  setIsHovered(true);
+  // Play hover sound
+  hoverSound.currentTime = 0; // Reset sound to start
+  hoverSound.play().catch(err => console.log('Audio play failed:', err));
+};
 
-     {isSelected ? (
-       <ZoomedGalaxy
-         colorScheme={colorScheme}
-         transactions={transactions}
-         safeColorIndex={safeColorIndex}
-         highlightedHash={highlightedHash}
-         setHoveredPlanet={setHoveredPlanet}
-         lodLevel={lodLevel}
-       />
-     ) : (
-       createMinimalGalaxy().map((ring, index) => (
-         <group key={`ring-${index}`} onClick={handleGalaxyClick}>
-           <mesh rotation={[Math.PI / 2, 0, 0]}>
-             <ringGeometry args={[ring.radius - 0.1, ring.radius + 0.1, 64]} />
-             <meshBasicMaterial 
-               color={ring.color}
-               transparent
-               opacity={0.8}
-               side={THREE.DoubleSide}
-               blending={THREE.AdditiveBlending}
-             />
-           </mesh>
-         </group>
-       ))
-     )}
+// Return JSX with modified group props
+return (
+  <group 
+    ref={groupRef} 
+    position={position}
+    onClick={handleGalaxyClick}
+    onPointerEnter={handleHover}  // Changed from the inline function to our new handler
+    onPointerLeave={() => setIsHovered(false)}
+    style={{ cursor: !isSelected ? 'pointer' : 'default' }}
+  >
+    <mesh onClick={handleGalaxyClick}>
+      <sphereGeometry args={[FIXED_GALAXY_SIZE * 1.2, 16, 16]} />
+      <meshBasicMaterial visible={false} />
+    </mesh>
 
-     {!isSelected && isInitialized && (
-       <Html
-         position={[FIXED_GALAXY_SIZE * 0.8, FIXED_GALAXY_SIZE * 0.3, 0]}
-         style={{
-           transform: 'translate(0, -50%)',
-           opacity: nameOpacity,
-           transition: 'opacity 0.3s ease-out'
-         }}
-         onClick={handleGalaxyClick}
-       >
-         <div className="galaxy-label-container">
-           <div className="galaxy-name">{galaxyName}</div>
-           <div 
-             className="galaxy-underline" 
-             style={{
-               backgroundColor: colorScheme.core,
-               boxShadow: `0 0 10px ${colorScheme.core}`
-             }}
-           />
-         </div>
-       </Html>
-     )}
-   </group>
- );
+    {/* Core with intense glow on hover */}
+    <mesh onClick={handleGalaxyClick}>
+      <sphereGeometry args={[isSelected ? 2 : 0.8, 32, 32]} />
+      <meshBasicMaterial 
+        color={colorScheme.core}
+        transparent
+        opacity={isHovered ? 1 : 0.9}
+      />
+    </mesh>
+    
+    {/* Core glow with massively enhanced intensity on hover */}
+    <mesh onClick={handleGalaxyClick}>
+      <sphereGeometry args={[isSelected ? 2.4 : isHovered ? 1.4 : 1, 32, 32]} />
+      <meshBasicMaterial
+        color={colorScheme.core}
+        transparent
+        opacity={isHovered ? 0.9 : 0.4}  // Much more intense glow
+        blending={THREE.AdditiveBlending}
+      />
+      <pointLight 
+        color={colorScheme.core} 
+        intensity={isHovered ? 15 : 3}  // 5x stronger light
+        distance={isHovered ? 80 : 50}  // Increased glow distance
+        decay={1.5}  // Slower decay for bigger glow
+      />
+    </mesh>
+
+    {/* Additional core glow layer for hover */}
+    {isHovered && !isSelected && (
+      <mesh>
+        <sphereGeometry args={[1.6, 32, 32]} />
+        <meshBasicMaterial
+          color={colorScheme.core}
+          transparent
+          opacity={0.3}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+    )}
+
+    {isSelected ? (
+      <ZoomedGalaxy
+        colorScheme={colorScheme}
+        transactions={transactions}
+        safeColorIndex={safeColorIndex}
+        highlightedHash={highlightedHash}
+        setHoveredPlanet={setHoveredPlanet}
+        lodLevel={lodLevel}
+      />
+    ) : (
+      createMinimalGalaxy().map((ring, index) => (
+        <group key={`ring-${index}`} onClick={handleGalaxyClick}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[ring.radius - 0.1, ring.radius + 0.1, 64]} />
+            <meshBasicMaterial 
+              color={ring.color}
+              transparent
+              opacity={isHovered ? 1 : 0.8}
+              side={THREE.DoubleSide}
+              blending={THREE.AdditiveBlending}
+            />
+            {/* Additional ring glow on hover */}
+            {isHovered && (
+              <pointLight 
+                color={ring.color} 
+                intensity={8}
+                distance={30}
+                decay={2}
+              />
+            )}
+          </mesh>
+        </group>
+      ))
+    )}
+
+    {!isSelected && isInitialized && (
+      <Html
+        position={[FIXED_GALAXY_SIZE * 0.8, FIXED_GALAXY_SIZE * 0.3, 0]}
+        style={{
+          transform: 'translate(0, -50%)',
+          opacity: nameOpacity,
+          transition: 'opacity 0.3s ease-out'
+        }}
+        onClick={handleGalaxyClick}
+      >
+        <div className="galaxy-label-container">
+          <div className="galaxy-name">{galaxyName}</div>
+          <div 
+            className="galaxy-underline" 
+            style={{
+              backgroundColor: colorScheme.core,
+              boxShadow: `0 0 ${isHovered ? '25px' : '10px'} ${colorScheme.core}`,
+              opacity: isHovered ? 1 : 0.8
+            }}
+          />
+        </div>
+      </Html>
+    )}
+  </group>
+);
 };
 
 export default memo(SpiralGalaxy);
