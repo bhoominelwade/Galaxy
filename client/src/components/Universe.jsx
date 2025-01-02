@@ -78,6 +78,7 @@ const Universe = () => {
   const [fps, setFps] = useState(60);
   const fpsInterval = useRef(null);
   const [isAlertShowing, setIsAlertShowing] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   // Refs
   const mainCameraRef = useRef();
@@ -90,7 +91,7 @@ const Universe = () => {
   const galaxyPositionsRef = useRef(new Map());
 
   const checkBounds = (position) => {
-    const universeRadius = selectedGalaxy ? 40 : 600;
+    const universeRadius = selectedGalaxy ? 40 : 2400;
     const distance = Math.sqrt(position.x * position.x + position.z * position.z);
     if (distance > universeRadius) {
       const ratio = universeRadius / distance;
@@ -98,9 +99,8 @@ const Universe = () => {
       position.z *= ratio;
     }
     
-    // Limit vertical movement
-    const maxY = selectedGalaxy ? 30 : 300;
-    const minY = selectedGalaxy ? -30 : -300;
+    const maxY = selectedGalaxy ? 30 : 1200;
+    const minY = selectedGalaxy ? -30 : -1200;
     position.y = Math.max(minY, Math.min(maxY, position.y));
     
     return position;
@@ -353,8 +353,8 @@ const handleKeyDown = useCallback((e) => {
   
       // Add distance check
       const currentDistance = camera.position.length();
-      const maxDistance = selectedGalaxy ? 40 : 600;
-      const minDistance = selectedGalaxy ? 5 : 50;
+      const maxDistance = selectedGalaxy ? 80 : 1800; // Reduced from 2400
+      const minDistance = selectedGalaxy ? 2 : 30;
   
       // Calculate new position
       const delta = -Math.sign(e.deltaY);
@@ -880,8 +880,9 @@ const handleKeyDown = useCallback((e) => {
     return (
       <div style={{ width: '100vw', height: '100vh', background: '#000000' }}>
        <AudioManager 
-        isMapExpanded={isMapExpanded}
-      />
+  isMapExpanded={isMapExpanded}
+  onChange={setIsMuted}
+/>
   
   <div style={{
   position: 'fixed',
@@ -912,7 +913,7 @@ const handleKeyDown = useCallback((e) => {
 <div style={{
   position: 'fixed',
   bottom: 0,
-  right: '20px',  // Always align to right
+  right: '8px',  // Always align to right
   width: window.innerWidth <= 768 ? '100%' : '400px',
   padding: window.innerWidth <= 768 ? '10px' : '20px',
   zIndex: 10,
@@ -1010,25 +1011,26 @@ const handleKeyDown = useCallback((e) => {
                 ) : (
                   <>
                     {galaxies.map((galaxy, index) => {
-                      const position = calculateGalaxyPosition(index, galaxies.length);
-                      return visibleObjects.has(`galaxy-${index}`) && 
-                            universeOptimizer.current.shouldRenderGalaxy(index, position) && (
-                        <SpiralGalaxy
-                          key={index}
-                          transactions={galaxy.transactions}
-                          position={position}
-                          onClick={() => handleGalaxyClick(galaxy)}
-                          isSelected={false}
-                          colorIndex={index}
-                          lodLevel={universeOptimizer.current.getLODLevel(
-                            mainCameraRef.current ? 
-                              mainCameraRef.current.position.distanceTo(new THREE.Vector3(...position))
-                              : 1000,
-                            fps
-                          )}
-                        />
-                      );
-                    })}
+  const position = calculateGalaxyPosition(index, galaxies.length);
+  return visibleObjects.has(`galaxy-${index}`) && 
+        universeOptimizer.current.shouldRenderGalaxy(index, position) && (
+    <SpiralGalaxy
+      key={index}
+      transactions={galaxy.transactions}
+      position={position}
+      onClick={() => handleGalaxyClick(galaxy)}
+      isSelected={false}
+      colorIndex={index}
+      isMuted={isMuted}// Get this from AudioManager state
+      lodLevel={universeOptimizer.current.getLODLevel(
+        mainCameraRef.current ? 
+          mainCameraRef.current.position.distanceTo(new THREE.Vector3(...position))
+          : 1000,
+        fps
+      )}
+    />
+  );
+})}
   
                     {solitaryPlanets.map((tx, index) => (
                       visibleObjects.has(`planet-${index}`) && (
@@ -1052,8 +1054,8 @@ const handleKeyDown = useCallback((e) => {
                 <OrbitControls 
   ref={controlsRef}
   enableZoom={true}
-  maxDistance={selectedGalaxy ? 80 : 1200} // Just slightly larger than universe bounds
-  minDistance={selectedGalaxy ? 5 : 100}  // Prevent getting too close to the universe
+  maxDistance={selectedGalaxy ? 80 : 1800}
+  minDistance={selectedGalaxy ? 2 : 30} // Prevent getting too close to the universe
   onChange={() => {
     if (mainCameraRef.current) {
       universeOptimizer.current.updateVisibleChunks();

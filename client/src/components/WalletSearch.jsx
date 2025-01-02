@@ -233,35 +233,29 @@ const WalletSearch = ({
 
   return (
     <div 
-      style={{
-        position: 'absolute',
-        ...(window.innerWidth <= 768 ? {
-          top: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: isExpanded ? 'calc(100% - 40px)' : '55px', // Circle when collapsed
-          maxWidth: isExpanded ? '400px' : '55px',
-          display: 'flex',
-          justifyContent: isExpanded ? 'center' : 'flex-end',
-        } : {
-          top: '20px',
-          right: '20px',
-          width: isExpanded ? '400px' : '55px',
-        }),
-        zIndex: 1000,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#fff',
-        padding: '10px',
-        borderRadius: isExpanded ? '12px' : '50px',
-        border: `1px solid ${isHovered ? '#24D2FB' : 'rgba(255, 255, 255, 0.2)'}`,
-        transition: 'all 0.4s ease-in-out',
-        background: 'rgba(0, 0, 0, 0.3)',
-        backdropFilter: 'blur(4px)',
-        height: isExpanded ? 'auto' : '55px',
-        cursor: 'pointer',
-      }}
+    style={{
+      position: 'absolute',
+      top: '20px',
+      right: '20px',
+      zIndex: 1000,
+      display: 'inline-flex',
+      alignItems: 'center',
+      color: '#fff',
+      padding: '10px',
+      borderRadius: isExpanded ? '12px' : '50px',
+      border: `1px solid ${isHovered ? '#24D2FB' : 'rgba(255, 255, 255, 0.2)'}}`,
+      transition: 'all 0.4s ease-in-out',
+      background: 'rgba(0, 0, 0, 0.3)',
+      backdropFilter: 'blur(4px)',
+      minWidth: isExpanded ? 'auto' : '55px',
+      width: isExpanded ? 'min(400px, calc(100vw - 100px))' : '55px',
+      maxWidth: '400px',
+      height: isExpanded ? 'auto' : '55px',
+      cursor: 'pointer',
+      '@media (max-width: 768px)': {
+        width: isExpanded ? 'calc(100vw - 100px)' : '55px'
+      }
+     }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
