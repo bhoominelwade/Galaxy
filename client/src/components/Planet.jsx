@@ -123,27 +123,26 @@ const PlanetMesh = ({ transaction, onHover, isSelected = false, isHighlighted = 
  };
 
  const handleClick = (e) => {
-   e.stopPropagation();
-   if (transaction?.hash) {
-     window.open(`https://solscan.io/tx/${transaction.hash}`, '_blank');
-   }
- };
+  e.stopPropagation();
+  if (transaction?.hash) {
+    window.open(`https://solscan.io/tx/${transaction.hash}`, '_blank');
+  }
+};
 
  return (
-   <group>
-     <mesh
-       ref={meshRef}
-       scale={planetSize}
-       onPointerOver={handlePointerOver}
-       onPointerOut={handlePointerOut}
-       onClick={handleClick}
-     >
-       <primitive object={sphereGeometry} />
-       <meshStandardMaterial
-         map={textures[textureIndex]}
-         {...materialProps}
-       />
-     </mesh>
+  <group onClick={handleClick}>
+  <mesh
+    ref={meshRef}
+    scale={planetSize}
+    onPointerOver={handlePointerOver}
+    onPointerOut={handlePointerOut}
+  >
+    <primitive object={sphereGeometry} />
+    <meshStandardMaterial
+      map={textures[textureIndex]}
+      {...materialProps}
+    />
+  </mesh>
 
      {renderGlowEffects && glowLayers.map((layer, index) => (
        <mesh key={index} scale={layer.scale * planetSize}>
