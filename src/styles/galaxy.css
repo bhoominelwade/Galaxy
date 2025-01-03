@@ -1,0 +1,97 @@
+.galaxy-info {
+  position: absolute;
+  transform: translate(-50%, 50px); /* Move below the galaxy */
+  background: rgba(0, 0, 0, 0.7);
+  padding: 4px 8px; /* Reduced padding */
+  border-radius: 4px;
+  color: white;
+  font-family: 'Monaco', monospace;
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  font-size: 0.8em; /* Reduced font size */
+  z-index: 1;
+}
+
+.galaxy-stats {
+  font-size: 0.9em; /* Slightly smaller stats */
+  opacity: 0.9;
+}
+
+.galaxy-name-container {
+  position: absolute;
+  transform: translate(-50%, 80px); /* Move further below the summation */
+  pointer-events: none;
+  z-index: 1;
+}
+
+.galaxy-name {
+  background: rgba(0, 0, 0, 0.7);
+  padding: 3px 6px; /* Reduced padding */
+  border-radius: 4px;
+  color: white;
+  font-family: 'Monaco', monospace;
+  font-size: 0.7em; /* Even smaller name text */
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  opacity: 0.8; /* Slightly transparent */
+}
+
+.transaction-info {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: white;
+  font-family: 'Monaco', monospace;
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 2;
+}
+
+.transaction-id {
+  font-size: 0.8em;
+  color: #8e9aaf;
+  margin-bottom: 4px;
+}
+
+.transaction-amount {
+  font-size: 0.9em;
+  color: #ffffff;
+}
+
+.planet-info {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: white;
+  font-family: 'Monaco', monospace;
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.planet-info .amount {
+  font-size: 0.9em;
+  color: #ffffff;
+  margin-top: 4px;
+}
+
+.planet-info .click-info {
+  font-size: 0.8em;
+  color: #66bb6a;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Add hover effect for better visibility */
+.galaxy-info:hover,
+.galaxy-name:hover {
+  opacity: 1;
+}
